@@ -172,6 +172,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <sql_node>            desc_table_stmt
 %type <sql_node>            create_index_stmt
 %type <sql_node>            drop_index_stmt
+%type <sql_node>            show_index_stmt
 %type <sql_node>            sync_stmt
 %type <sql_node>            begin_stmt
 %type <sql_node>            commit_stmt
@@ -209,6 +210,7 @@ command_wrapper:
   | desc_table_stmt
   | create_index_stmt
   | drop_index_stmt
+  | show_index_stmt
   | sync_stmt
   | begin_stmt
   | commit_stmt
@@ -300,6 +302,16 @@ drop_index_stmt:      /*drop index 语句的语法解析树*/
       free($5);
     }
     ;
+
+show_index_stmt:      /*show index 语句的语法解析树*/
+    SHOW INDEX FROM ID
+    {
+      $$ = new ParsedSqlNode(SCF_SHOW_INDEX);
+      $$->show_index.relation_name = $4;
+      free($4);
+    }
+    ;
+
 create_table_stmt:    /*create table 语句的语法解析树*/
     CREATE TABLE ID LBRACE attr_def attr_def_list RBRACE
     {

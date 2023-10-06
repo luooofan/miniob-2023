@@ -102,6 +102,10 @@ public:
   const char *name() const;
 
   const TableMeta &table_meta() const;
+  const std::vector<Index *> &indexes() const
+  {
+    return indexes_;
+  }
 
   RC sync();
   RC drop(const char *dir);

@@ -212,6 +212,15 @@ struct DropIndexSqlNode
 };
 
 /**
+ * @brief 描述一个show index语句
+ * @ingroup SQLParser
+ */
+struct ShowIndexSqlNode
+{
+  std::string relation_name;  ///< Relation name
+};
+
+/**
  * @brief 描述一个desc table语句
  * @ingroup SQLParser
  * @details desc table 是查询表结构信息的语句
@@ -287,6 +296,7 @@ enum SqlCommandFlag
   SCF_CREATE_INDEX,
   SCF_DROP_INDEX,
   SCF_SYNC,
+  SCF_SHOW_INDEX,
   SCF_SHOW_TABLES,
   SCF_DESC_TABLE,
   SCF_BEGIN,        ///< 事务开始语句，可以在这里扩展只读事务
@@ -317,6 +327,7 @@ public:
   DropTableSqlNode          drop_table;
   CreateIndexSqlNode        create_index;
   DropIndexSqlNode          drop_index;
+  ShowIndexSqlNode          show_index;
   DescTableSqlNode          desc_table;
   LoadDataSqlNode           load_data;
   ExplainSqlNode            explain;
