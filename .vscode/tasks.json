@@ -11,7 +11,7 @@
         {
             "label": "build_debug",
             "type": "shell",
-            "command": "bash build.sh debug",
+            "command": "bash ${workspaceFolder}/build.sh debug",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
@@ -21,12 +21,76 @@
         {
             "label": "build_release",
             "type": "shell",
-            "command": "bash build.sh release"
+            "command": "bash ${workspaceFolder}/build.sh release"
         },
         {
             "label": "gen_parser",
             "type": "shell",
             "command": "cd ${workspaceFolder}/src/observer/sql/parser && bash gen_parser.sh"
+        },
+        {
+            "label": "make",
+            "type": "shell",
+            "command": "bash ${workspaceFolder}/build.sh make"
+        },
+        {
+            "label": "test all cases",
+            "type": "shell",
+            "command": "bash ${workspaceFolder}/build.sh test",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "test some cases",
+            "type": "shell",
+            "command": "bash ${workspaceFolder}/build.sh test ${input:test_some_cases}"
+        },
+        {
+            "label": "diff single case",
+            "type": "shell",
+            "command": "bash ${workspaceFolder}/build.sh diff ${input:single_test_case} -u"
+        },
+        {
+            "label": "unittest",
+            "type": "shell",
+            "command": "bash ${workspaceFolder}/build.sh unittest"
+        },
+    ],
+    "inputs": [
+        {
+            "type": "pickString",
+            "id": "single_test_case",
+            "description": "Please pick one case",
+            "options": [
+                "basic",
+                "primary-aggregation-func",
+                "primary-complex-sub-query",
+                "primary-date",
+                "primary-drop-table",
+                "primary-expression",
+                "primary-group-by",
+                "primary-insert",
+                "primary-join-tables",
+                "primary-multi-index",
+                "primary-null",
+                "primary-order-by",
+                "primary-select-meta",
+                "primary-select-tables",
+                "primary-simple-sub-query",
+                "primary-text",
+                "primary-unique",
+                "primary-update",
+            ],
+            "default": "basic"
+        },
+        {
+            "type": "promptString",
+            "id": "test_some_cases",
+            "description": "Please enter some test cases with separated by commas",
+            "default": "basic,primary-select-meta"
         }
     ]
 }
