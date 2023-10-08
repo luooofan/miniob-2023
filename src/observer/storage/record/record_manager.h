@@ -167,6 +167,13 @@ public:
   RC insert_record(const char *data, RID *rid);
 
   /**
+   * @brief 更新一条记录
+   *
+   * @param rec 要更新的记录
+   */
+
+  RC update_record(Record *rec);
+  /**
    * @brief 数据库恢复时，在指定位置插入数据
    * 
    * @param data 要插入的数据行
@@ -275,6 +282,13 @@ public:
    */
   RC insert_record(const char *data, int record_size, RID *rid);
 
+  /**
+   * @brief 更新一条记录
+   *
+   * @param data 要更新的记录
+   */
+
+  RC update_record(Record *rec);
    /**
    * @brief 数据库恢复时，在指定文件指定位置插入数据
    * 

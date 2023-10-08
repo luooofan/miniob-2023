@@ -80,6 +80,9 @@ public:
   RC visit_record(const RID &rid, bool readonly, std::function<void(Record &)> visitor);
   RC get_record(const RID &rid, Record &record);
 
+  //将该record的attr_name列更新为 value
+  RC update_record(Record &record ,const char* attr_name,Value * value);
+  
   RC recover_insert_record(Record &record);
 
   // TODO refactor
