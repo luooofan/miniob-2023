@@ -313,6 +313,8 @@ public:
 
   RC flush_page(Frame &frame);
 
+  RC remove_file(const char *file_name);
+
 public:
   static void set_instance(BufferPoolManager *bpm); // TODO 优化全局变量的表示方法
   static BufferPoolManager &instance();
