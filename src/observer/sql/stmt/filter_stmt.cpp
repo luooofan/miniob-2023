@@ -144,8 +144,7 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
   }
 
   //' 2020-10-11' = c1 
-  if( !condition.left_is_attr&& left_field->type() == DATES && 
-  condition.right_is_attr && right_field->type() ==DATES)
+  if( !condition.left_is_attr && condition.right_is_attr && right_field->type() ==DATES)
   {
       FilterObj filter_obj;
       int32_t date; 
