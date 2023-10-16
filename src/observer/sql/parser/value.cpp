@@ -197,7 +197,19 @@ int Value::compare(const Value &other) const
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == INTS) {
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
+  } else if(this->attr_type_ == CHARS)
+  {
+    //字符串与数字类型比较，字符串转换为int,然后进行比较
+    Value tmp;
+    tmp.set_int(get_int());
+    return tmp.compare(other);
+  } else if(other.attr_type_ == CHARS)
+  {
+    Value tmp;
+    tmp.set_int(other.get_int());
+    return compare(tmp);
   }
+
   LOG_WARN("not supported");
   return -1;  // TODO return rc?
 }
@@ -300,4 +312,33 @@ bool Value::get_boolean() const
     }
   }
   return false;
+}
+
+RC Value::typecast(AttrType target_type)
+{
+  //将target转换为target_type;
+  RC rc = RC::SUCCESS;
+    switch (target_type) {
+    case INTS: {
+      int tar =get_int();
+      set_int(tar);
+    } break;
+    case FLOATS: {
+      int tar = get_int();
+      set_float(tar);
+    } break;
+    case BOOLEANS: {
+      bool tar = get_boolean();
+      set_boolean(tar);
+    } break;
+    case CHARS: {
+      std::string str = get_string();
+      set_string(str.c_str());
+    } break;
+    default: {
+      LOG_WARN("unsupported attr type: %d", attr_type_);
+      rc = RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    } break;
+  }
+  return rc;
 }
