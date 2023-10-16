@@ -8,6 +8,7 @@
 
 #include "common/log/log.h"
 #include "common/lang/string.h"
+#include "common/time/date.h"
 #include "sql/parser/parse_defs.h"
 #include "sql/parser/yacc_sql.hpp"
 #include "sql/parser/lex_sql.h"
@@ -20,9 +21,9 @@ string token_name(const char *sql_string, YYLTYPE *llocp)
   return string(sql_string + llocp->first_column, llocp->last_column - llocp->first_column + 1);
 }
 
-int yyerror(YYLTYPE *llocp, const char *sql_string, ParsedSqlResult *sql_result, yyscan_t scanner, const char *msg)
+int yyerror(YYLTYPE *llocp, const char *sql_string, ParsedSqlResult *sql_result, yyscan_t scanner, const char *msg,SqlCommandFlag flag = SCF_ERROR)
 {
-  std::unique_ptr<ParsedSqlNode> error_sql_node = std::make_unique<ParsedSqlNode>(SCF_ERROR);
+  std::unique_ptr<ParsedSqlNode> error_sql_node = std::make_unique<ParsedSqlNode>(flag);
   error_sql_node->error.error_msg = msg;
   error_sql_node->error.line = llocp->first_line;
   error_sql_node->error.column = llocp->first_column;
@@ -385,7 +386,19 @@ value:
     }
     |DATE_STR {
       char *tmp = common::substr($1,1,strlen($1)-2);
-      $$ = new Value(tmp);
+      std::string str(tmp);
+      Value * value = new Value();
+      int date;
+      if(string_to_date(str,date) < 0)
+      {
+        //int yyerror(YYLTYPE *llocp, const char *sql_string, ParsedSqlResult *sql_result,
+        // yyscan_t scanner, const char *msg,SqlCommandFlag flag = SCF_ERROR)
+        yyerror(&@$,NULL,sql_result,scanner,"date invaid",SCF_DATE);
+        
+      }
+      else
+        value->set_date(date);
+      $$ = value;
       free(tmp);
     }
     |SSS {

@@ -55,7 +55,13 @@ RC ParseStage::handle_request(SQLStageEvent *sql_event)
     sql_result->set_state_string("Failed to parse sql");
     return rc;
   }
-
+  else if(sql_node->flag == SCF_DATE)
+  {
+    rc = RC::DATE_INVALID;
+    sql_result->set_return_code(rc);
+    sql_result->set_state_string("FAILURE");
+    return rc;
+  }
   sql_event->set_sql_node(std::move(sql_node));
 
   return RC::SUCCESS;

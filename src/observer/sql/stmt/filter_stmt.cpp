@@ -15,7 +15,6 @@ See the Mulan PSL v2 for more details. */
 #include "common/rc.h"
 #include "common/log/log.h"
 #include "common/lang/string.h"
-#include "common/time/date.h"
 #include "sql/stmt/filter_stmt.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
@@ -90,73 +89,38 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
   }
 
   filter_unit = new FilterUnit;
-  const FieldMeta *left_field = nullptr;
   if (condition.left_is_attr) {
     Table *table = nullptr;
-    //const FieldMeta *field = nullptr;
-    rc = get_table_and_field(db, default_table, tables, condition.left_attr, table, left_field);
+    const FieldMeta *field = nullptr;
+    rc = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
     if (rc != RC::SUCCESS) {
       LOG_WARN("cannot find attr");
       return rc;
     }
     FilterObj filter_obj;
-    filter_obj.init_attr(Field(table, left_field));
+    filter_obj.init_attr(Field(table, field));
     filter_unit->set_left(filter_obj);
   } else {
     FilterObj filter_obj;
-    //' 2020-10-11' = c1  这种情况在下面处理
     filter_obj.init_value(condition.left_value);
     filter_unit->set_left(filter_obj);
   }
-  const FieldMeta *right_field = nullptr;
+
   if (condition.right_is_attr) {
     Table *table = nullptr;
-    //const FieldMeta *field = nullptr;
-    rc = get_table_and_field(db, default_table, tables, condition.right_attr, table, right_field);
+    const FieldMeta *field = nullptr;
+    rc = get_table_and_field(db, default_table, tables, condition.right_attr, table, field);
     if (rc != RC::SUCCESS) {
       LOG_WARN("cannot find attr");
       return rc;
     }
     FilterObj filter_obj;
-    filter_obj.init_attr(Field(table, right_field));
+    filter_obj.init_attr(Field(table, field));
     filter_unit->set_right(filter_obj);
   } else {
     FilterObj filter_obj;
-    // c1 = ' 2020-10-11' 如果左边是时间列，则要将右边转换为
-    if( condition.left_is_attr && left_field->type() == DATES && condition.right_value.attr_type() == CHARS )
-    {
-      int32_t date; 
-      int ret = string_to_date(condition.right_value.get_string(),date);
-      LOG_WARN("niuxn : after cast ,date = %d",date);
-      if( ret != 0)
-      {
-        return RC::INTERNAL;
-      }
-      Value val;
-      val.set_date(date);
-      filter_obj.init_value(val);
-    }
-    else
-    {
-      filter_obj.init_value(condition.right_value);
-    }
+    filter_obj.init_value(condition.right_value);
     filter_unit->set_right(filter_obj);
-  }
-
-  //' 2020-10-11' = c1 
-  if( !condition.left_is_attr && condition.right_is_attr && right_field->type() ==DATES)
-  {
-      FilterObj filter_obj;
-      int32_t date; 
-      int ret = string_to_date(condition.left_value.get_string(),date);
-      if( ret != 0)
-      {
-        return RC::INTERNAL;
-      }
-      Value val;
-      val.set_date(date);
-      filter_obj.init_value(val);
-      filter_unit->set_left(filter_obj);
   }
   filter_unit->set_comp(comp);
 

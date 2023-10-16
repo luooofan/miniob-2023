@@ -20,7 +20,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "common/time/date.h"
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats", "booleans","dates"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats", "dates","booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
@@ -225,6 +225,7 @@ int Value::compare(const Value &other) const
 
 int Value::get_int() const
 {
+  ASSERT(attr_type_ != DATES,"date can not get_int()");
   switch (attr_type_) {
     case CHARS: {
       try {
@@ -234,8 +235,7 @@ int Value::get_int() const
         return 0;
       }
     }
-    case INTS: 
-    case DATES:{
+    case INTS: {
       return num_value_.int_value_;
     }
     case FLOATS: {
@@ -254,6 +254,7 @@ int Value::get_int() const
 
 float Value::get_float() const
 {
+  ASSERT(attr_type_ != DATES,"date can not get_float()");
   switch (attr_type_) {
     case CHARS: {
       try {
@@ -263,8 +264,7 @@ float Value::get_float() const
         return 0.0;
       }
     } break;
-    case INTS: 
-    case DATES:{
+    case INTS: {
       return float(num_value_.int_value_);
     } break;
     case FLOATS: {
@@ -288,6 +288,7 @@ std::string Value::get_string() const
 
 bool Value::get_boolean() const
 {
+  ASSERT(attr_type_ != DATES,"date can not get_boolean()");
   switch (attr_type_) {
     case CHARS: {
       try {
@@ -307,8 +308,7 @@ bool Value::get_boolean() const
         return !str_value_.empty();
       }
     } break;
-    case INTS: 
-    case DATES:{
+    case INTS: {
       return num_value_.int_value_ != 0;
     } break;
     case FLOATS: {

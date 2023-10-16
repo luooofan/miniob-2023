@@ -1,10 +1,11 @@
 #include"date.h"
 #include<string>
 #include"stdio.h"
-
+#include "common/log/log.h"
 bool check_dateV2(int year, int month, int day)
 {
   static int mon[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  LOG_WARN("check_dateV2: year %d,month %d,day %d");
   bool leap = (year % 400 == 0 || (year % 100 && year % 4 == 0));
   if (year > 0 && (month > 0) && (month <= 12) && (day > 0) && (day <= ((month == 2 && leap) ? 1 : 0) + mon[month]))
     return true;
