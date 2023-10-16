@@ -197,19 +197,35 @@ int Value::compare(const Value &other) const
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == INTS) {
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
-  } else if(this->attr_type_ == CHARS)
+  } 
+  //字符串与整数比较时会转成整数类型
+  else if(this->attr_type_ == CHARS && other.attr_type_ == INTS)
   {
+    //字符串与整数比较时会转成整数类型，字符串/整数与浮点数比较时会转成浮点数类型
     //字符串与数字类型比较，字符串转换为int,然后进行比较
     Value tmp;
     tmp.set_int(get_int());
     return tmp.compare(other);
-  } else if(other.attr_type_ == CHARS)
+
+  } else if (this->attr_type_ == INTS &&other.attr_type_  == CHARS )
   {
     Value tmp;
     tmp.set_int(other.get_int());
     return compare(tmp);
   }
-
+  //字符串与浮点数比较时会转成浮点数类型
+  else if(this->attr_type_ == CHARS && other.attr_type_ == FLOATS)
+  {
+    Value tmp;
+    tmp.set_float(get_float());
+    return tmp.compare(other);
+  }
+  else if(this->attr_type_ == FLOATS && other.attr_type_ == CHARS)
+  {
+    Value tmp;
+    tmp.set_float(other.get_float());
+    return compare(tmp);
+  }
   LOG_WARN("not supported");
   return -1;  // TODO return rc?
 }
@@ -324,7 +340,7 @@ RC Value::typecast(AttrType target_type)
       set_int(tar);
     } break;
     case FLOATS: {
-      int tar = get_int();
+      float tar = get_float();
       set_float(tar);
     } break;
     case BOOLEANS: {
