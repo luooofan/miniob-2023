@@ -765,3 +765,21 @@ BufferPoolManager &BufferPoolManager::instance()
 {
   return *default_bpm;
 }
+//将相关数据移出bufferpool
+RC BufferPoolManager::remove_file(const char *file_name)
+{
+  RC ret = RC::SUCCESS;
+  if((ret = close_file(file_name)) != RC::SUCCESS)
+  {
+    LOG_WARN("close file fail. file name=%s", file_name);
+  }
+  else
+  {
+    if( 0 != ::remove(file_name))
+    {
+      LOG_WARN("remove file fail. file name=%s, errno = %s", file_name,strerror(errno));
+      ret = RC::FILE_REMOVE;
+    }
+  }
+  return ret;
+}
