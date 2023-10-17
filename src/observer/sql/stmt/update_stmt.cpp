@@ -33,7 +33,7 @@ UpdateStmt::~UpdateStmt()
 RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
 {
   // TODO
-  const char *table_name = update.relation_name.c_str();
+    const char *table_name = update.relation_name.c_str();
   if (nullptr == db || nullptr == table_name) {
     LOG_WARN("invalid argument. db=%p, table_name=%p",db, table_name);
     return RC::INVALID_ARGUMENT;
@@ -58,6 +58,10 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     {
       if(field.type() == update.value.attr_type())
       {
+        if(field.type() == CHARS && field.len() < update.value.length())
+        {
+            return RC::INVALID_ARGUMENT;
+        }
         valid = true;
         update_field = field;
         break;
