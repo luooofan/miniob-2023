@@ -20,11 +20,11 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "common/time/date.h"
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats", "dates","booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats", "dates", "nulls", "booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
-  if (type >= UNDEFINED && type <= DATES) {
+  if (type >= UNDEFINED && type <= NULLS) {
     return ATTR_TYPE_NAME[type];
   }
   return "unknown";
@@ -59,6 +59,7 @@ Value::Value(const char *s, int len /*= 0*/)
   set_string(s, len);
 }
 
+// NULLS can not set data
 void Value::set_data(char *data, int length)
 {
   switch (attr_type_) {
@@ -142,6 +143,9 @@ void Value::set_value(const Value &value)
     case BOOLEANS: {
       set_boolean(value.get_boolean());
     } break;
+    case NULLS: {
+      set_null();
+    } break;
     case UNDEFINED: {
       ASSERT(false, "got an invalid value type");
     } break;
@@ -179,6 +183,10 @@ std::string Value::to_string() const
     case DATES:{
       os << date_to_string(num_value_.int_value_);
     } break;
+    // TODO(wbj) used to cast ?
+    case NULLS: {
+      os << "NULL";
+    } break;
     default: {
       LOG_WARN("unsupported attr type: %d", attr_type_);
     } break;
@@ -188,6 +196,7 @@ std::string Value::to_string() const
 
 int Value::compare(const Value &other) const
 {
+  ASSERT(!this->is_null() && !other.is_null(), "Cound Not Be Null!");
   if (this->attr_type_ == other.attr_type_) {
     switch (this->attr_type_) {
       case INTS: {

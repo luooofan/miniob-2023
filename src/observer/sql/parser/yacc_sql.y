@@ -46,6 +46,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %}
 
 %define api.pure full
+/** %define parse.error detailed **/
 %define parse.error verbose
 /** 启用位置标识 **/
 %locations
@@ -94,6 +95,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         DATA
         INFILE
         EXPLAIN
+        NOT
+        NULL_T
         EQ
         LT
         GT
@@ -328,6 +331,25 @@ attr_def:
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
+      $$->nullable = false;
+      free($1);
+    }
+    | ID type LBRACE number RBRACE NOT NULL_T
+    {
+      $$ = new AttrInfoSqlNode;
+      $$->type = (AttrType)$2;
+      $$->name = $1;
+      $$->length = $4;
+      $$->nullable = false;
+      free($1);
+    }
+    | ID type LBRACE number RBRACE NULL_T
+    {
+      $$ = new AttrInfoSqlNode;
+      $$->type = (AttrType)$2;
+      $$->name = $1;
+      $$->length = $4;
+      $$->nullable = true;
       free($1);
     }
     | ID type
@@ -336,6 +358,25 @@ attr_def:
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
+      $$->nullable = false;
+      free($1);
+    }
+    | ID type NOT NULL_T
+    {
+      $$ = new AttrInfoSqlNode;
+      $$->type = (AttrType)$2;
+      $$->name = $1;
+      $$->length = 4;
+      $$->nullable = false;
+      free($1);
+    }
+    | ID type NULL_T
+    {
+      $$ = new AttrInfoSqlNode;
+      $$->type = (AttrType)$2;
+      $$->name = $1;
+      $$->length = 4;
+      $$->nullable = true;
       free($1);
     }
     ;
@@ -381,11 +422,11 @@ value_list:
 value:
     NUMBER {
       $$ = new Value((int)$1);
-      @$ = @1;
+      // @$ = @1; // useless
     }
     |FLOAT {
       $$ = new Value((float)$1);
-      @$ = @1;
+      // @$ = @1; // useless
     }
     |DATE_STR {
       char *tmp = common::substr($1,1,strlen($1)-2);
@@ -408,6 +449,10 @@ value:
       char *tmp = common::substr($1,1,strlen($1)-2);
       $$ = new Value(tmp);
       free(tmp);
+    }
+    | NULL_T {
+      $$ = new Value();
+      $$->set_null();
     }
     ;
     
@@ -436,6 +481,7 @@ update_stmt:      /*  update 语句的语法解析树*/
       }
       free($2);
       free($4);
+      delete $6;
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
@@ -507,6 +553,10 @@ expression:
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
     }
     | value {
+      if ($1->is_null()) {
+        yyerror(&@$, sql_string, sql_result, scanner, "NULL Cound Not In Expression Now!");
+        YYERROR;
+      }
       $$ = new ValueExpr(*$1);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;

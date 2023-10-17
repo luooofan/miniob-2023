@@ -110,10 +110,14 @@ ComparisonExpr::~ComparisonExpr()
 RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &result) const
 {
   RC rc = RC::SUCCESS;
-  //int cmp_result = left.compare(right);
-  int cmp_result;
-  if(comp_ != LIKE_OP && comp_ != NOT_LIKE_OP)
-  {
+  // check null firstly. don't care comp_
+  if (left.is_null() || right.is_null()) {
+    result = false;
+    return rc;
+  }
+
+  int cmp_result = 0;
+  if(comp_ != LIKE_OP && comp_ != NOT_LIKE_OP) {
     cmp_result = left.compare(right);
   }
   result = false;
@@ -141,7 +145,7 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
     } break;
     case NOT_LIKE_OP:{
       result = !str_like(left,right);
-    }break;
+    } break;
     default: {
       LOG_WARN("unsupported comparison. %d", comp_);
       rc = RC::INTERNAL;
