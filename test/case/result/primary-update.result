@@ -79,3 +79,23 @@ ID | T_NAME | COL1 | COL2
 10. UPDATE WITH INVALID VALUE
 UPDATE Update_table_1 SET col1='N01' WHERE id=1;
 FAILURE
+
+CREATE TABLE drop_table_2(id int, name char(4), age int);
+SUCCESS
+INSERT INTO drop_table_2 VALUES (1,'MiniOB',12);
+FAILURE
+
+INSERT INTO drop_table_2 VALUES (2,'Min',12);
+SUCCESS
+UPDATE drop_table_2 set name = 'MiniOB';
+FAILURE
+
+CREATE TABLE update_table_3(id int, t_name char(20), col1 int, col2 int);
+SUCCESS
+INSERT INTO update_table_3 VALUES(1,'56JLVDMAQQBV',17,54);
+SUCCESS
+UPDATE update_table_3 SET t_name='H9SFQHC8R21AM7DH8' WHERE col1=17 AND col2=54;
+SUCCESS
+select * from update_table_3;
+id | t_name | col1 | col2
+1 | H9SFQHC8R21AM7DH8 | 17 | 54

@@ -16,7 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
-UpdateStmt::UpdateStmt(Table *table, Value *values, int value_amount,FieldMeta field,FilterStmt * filter_stmt)
+UpdateStmt::UpdateStmt(Table *table, const Value *values, int value_amount,FieldMeta field,FilterStmt * filter_stmt)
     : table_(table), values_(values), value_amount_(value_amount),filter_stmt_(filter_stmt)
 {
   fields_.push_back(field);
@@ -33,7 +33,7 @@ UpdateStmt::~UpdateStmt()
 RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
 {
   // TODO
-  const char *table_name = update.relation_name.c_str();
+    const char *table_name = update.relation_name.c_str();
   if (nullptr == db || nullptr == table_name) {
     LOG_WARN("invalid argument. db=%p, table_name=%p",db, table_name);
     return RC::INVALID_ARGUMENT;
@@ -58,6 +58,10 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     {
       if(field.type() == update.value.attr_type())
       {
+        if(field.type() == CHARS && field.len() < update.value.length())
+        {
+            return RC::INVALID_ARGUMENT;
+        }
         valid = true;
         update_field = field;
         break;
@@ -79,8 +83,7 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
     return rc;
   }
-  UpdateSqlNode  U = const_cast<UpdateSqlNode&>(update);
     // everything alright
-  stmt = new UpdateStmt(table,&(U.value), 1,update_field,filter_stmt);
+  stmt = new UpdateStmt(table, &(update.value), 1,update_field,filter_stmt);
   return RC::SUCCESS;
 }

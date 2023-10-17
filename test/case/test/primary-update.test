@@ -40,3 +40,14 @@ UPDATE Update_table_1 SET t_name='N01' WHERE id=100;
 
 -- echo 10. update with invalid value
 UPDATE Update_table_1 SET col1='N01' WHERE id=1;
+
+CREATE TABLE drop_table_2(id int, name char(4), age int);
+INSERT INTO drop_table_2 VALUES (1,'MiniOB',12);
+
+INSERT INTO drop_table_2 VALUES (2,'Min',12);
+UPDATE drop_table_2 set name = 'MiniOB';
+
+CREATE TABLE update_table_3(id int, t_name char(20), col1 int, col2 int);
+INSERT INTO update_table_3 VALUES(1,'56JLVDMAQQBV',17,54);
+UPDATE update_table_3 SET t_name='H9SFQHC8R21AM7DH8' WHERE col1=17 AND col2=54;
+select * from update_table_3;

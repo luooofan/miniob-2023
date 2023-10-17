@@ -58,6 +58,9 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
           table_name, field_meta->name(), field_type, value_type);
       return RC::SCHEMA_FIELD_TYPE_MISMATCH;
     }
+    if(field_type == CHARS && values[i].length() > field_meta->len()){
+        return RC::INVALID_ARGUMENT;
+    }
   }
 
   // everything alright
