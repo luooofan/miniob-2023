@@ -132,6 +132,19 @@ MvccTrx::~MvccTrx()
 {
 }
 
+// TODO No Correct!
+RC MvccTrx::insert_records(Table *table, std::vector<Record> &records)
+{
+  RC rc = RC::SUCCESS;
+  for (auto& rcd : records) {
+    rc = insert_record(table, rcd);
+    if (RC::SUCCESS != rc) {
+      break;
+    }
+  }
+  return rc;
+}
+
 RC MvccTrx::insert_record(Table *table, Record &record)
 {
   Field begin_field;
