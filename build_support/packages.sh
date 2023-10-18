@@ -85,16 +85,19 @@ install_linux() {
   # Install packages.
   apt-get -y install \
       build-essential \
-      clang-8 \
-      clang-format-8 \
-      clang-tidy-8 \
+      clang \
+      clang-format \
+      clang-tidy \
+      clang-tools \
       cmake \
       doxygen \
       git \
-      g++-7 \
+      g++ \
       pkg-config \
       valgrind \
       zlib1g-dev
+  # Install pyyaml for run_clang_tidy.py with -export-fixes 
+  # pip3 install pyyaml
 }
 
 main "$@"
