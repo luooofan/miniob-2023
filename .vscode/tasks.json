@@ -6,7 +6,11 @@
         {
             "label": "init",
             "type": "shell",
-            "command": "sudo -E env PATH=$PATH bash ${workspaceFolder}/build.sh init"
+            "command": "sudo -E env PATH=$PATH bash ${workspaceFolder}/build.sh init",
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
         },
         {
             "label": "build_debug",
@@ -16,22 +20,37 @@
             "group": {
                 "kind": "build",
                 "isDefault": true
-            }
+            },
+            "presentation": {
+                "focus": true,
+            },
         },
         {
             "label": "build_release",
             "type": "shell",
-            "command": "bash ${workspaceFolder}/build.sh release"
+            "command": "bash ${workspaceFolder}/build.sh release",
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
         },
         {
             "label": "gen_parser",
             "type": "shell",
-            "command": "cd ${workspaceFolder}/src/observer/sql/parser && bash gen_parser.sh"
+            "command": "cd ${workspaceFolder}/src/observer/sql/parser && bash gen_parser.sh",
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
         },
         {
             "label": "make",
             "type": "shell",
-            "command": "bash ${workspaceFolder}/build.sh make"
+            "command": "bash ${workspaceFolder}/build.sh make",
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
         },
         {
             "label": "test all cases",
@@ -41,22 +60,46 @@
                 "kind": "test",
                 "isDefault": true
             },
-            "problemMatcher": []
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
+        },
+        {
+            "label": "test single case",
+            "type": "shell",
+            "command": "bash ${workspaceFolder}/build.sh test ${input:single_test_case}",
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
         },
         {
             "label": "test some cases",
             "type": "shell",
-            "command": "bash ${workspaceFolder}/build.sh test ${input:test_some_cases}"
+            "command": "bash ${workspaceFolder}/build.sh test ${input:test_some_cases}",
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
         },
         {
             "label": "diff single case",
             "type": "shell",
-            "command": "bash ${workspaceFolder}/build.sh diff ${input:single_test_case} -u"
+            "command": "bash ${workspaceFolder}/build.sh diff ${input:single_test_case} -u",
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
         },
         {
             "label": "unittest",
             "type": "shell",
-            "command": "bash ${workspaceFolder}/build.sh unittest"
+            "command": "bash ${workspaceFolder}/build.sh unittest",
+            "problemMatcher": [],
+            "presentation": {
+                "focus": true,
+            },
         },
     ],
     "inputs": [
