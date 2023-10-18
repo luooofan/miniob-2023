@@ -110,12 +110,26 @@ ComparisonExpr::~ComparisonExpr()
 RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &result) const
 {
   RC rc = RC::SUCCESS;
-  //int cmp_result = left.compare(right);
-  int cmp_result;
-  if(comp_ != LIKE_OP && comp_ != NOT_LIKE_OP)
-  {
-    cmp_result = left.compare(right);
+
+  if (comp_ == IS_NULL || comp_ == IS_NOT_NULL) {
+    ASSERT(right.is_null(), "IS_[NOT_]NULL rhs NOT NULL!");
+    result = comp_ == IS_NULL ? left.is_null() : !left.is_null();
+    return rc;
   }
+
+  // check null firstly. don't care comp_
+  if (left.is_null() || right.is_null()) {
+    result = false;
+    return rc;
+  }
+
+  if (comp_ == LIKE_OP || comp_ == NOT_LIKE_OP) {
+    ASSERT(left.is_string() && right.is_string(), "[NOT_]LIKE_OP lhs or rhs NOT STRING!");
+    result = comp_ == LIKE_OP ? str_like(left, right) : !str_like(left, right);
+    return rc;
+  }
+
+  int cmp_result = left.compare(right);
   result = false;
   switch (comp_) {
     case EQUAL_TO: {
@@ -136,12 +150,6 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
     case GREAT_THAN: {
       result = (cmp_result > 0);
     } break;
-    case LIKE_OP :{
-      result = str_like(left,right);
-    } break;
-    case NOT_LIKE_OP:{
-      result = !str_like(left,right);
-    }break;
     default: {
       LOG_WARN("unsupported comparison. %d", comp_);
       rc = RC::INTERNAL;

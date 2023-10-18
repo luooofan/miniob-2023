@@ -52,8 +52,10 @@ enum CompOp
   LESS_THAN,    ///< "<"
   GREAT_EQUAL,  ///< ">="
   GREAT_THAN,   ///< ">"
-  LIKE_OP,      //"like"      
-  NOT_LIKE_OP,  //"not like"  
+  LIKE_OP,      ///< "like"
+  NOT_LIKE_OP,  ///< "not like"
+  IS_NULL,      ///< is null
+  IS_NOT_NULL,  ///< is not null
   NO_OP
 };
 
@@ -115,7 +117,7 @@ struct CalcSqlNode
 struct InsertSqlNode
 {
   std::string        relation_name;  ///< Relation to insert into
-  std::vector<Value> values;         ///< 要插入的值
+  std::vector<std::vector<Value>> values;         ///< 要插入的值
 };
 
 /**
@@ -152,6 +154,7 @@ struct AttrInfoSqlNode
   AttrType    type;       ///< Type of attribute
   std::string name;       ///< Attribute name
   size_t      length;     ///< Length of attribute
+  bool        nullable;   ///< Nullable
 };
 
 /**

@@ -26,9 +26,12 @@ enum AttrType
   CHARS,          ///< 字符串类型
   INTS,           ///< 整数类型(4字节)
   FLOATS,         ///< 浮点数类型(4字节)
-  DATES,          ///日期类型
+  DATES,          ///< 日期类型
+  NULLS,          ///< null类型
   BOOLEANS,       ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
 };
+// CHARS..DATES 是字段类型，FieldMeta 会进行检查
+// 所有都是值类型，BOOLEANS 是内部值类型
 
 const char *attr_type_to_string(AttrType type);
 AttrType attr_type_from_string(const char *s);
@@ -58,6 +61,16 @@ public:
   void set_type(AttrType type)
   {
     this->attr_type_ = type;
+  }
+  void set_null()
+  {
+    this->attr_type_ = NULLS;
+  }
+  bool is_null() const {
+    return this->attr_type_ == NULLS;
+  }
+  bool is_string() const {
+    return this->attr_type_ == CHARS;
   }
   void set_data(char *data, int length);
   void set_data(const char *data, int length)
@@ -90,6 +103,7 @@ public:
   /**
    * 获取对应的值
    * 如果当前的类型与期望获取的类型不符，就会执行转换操作
+   * NULLS类型不适用于以下接口
    */
   int get_int() const;
   float get_float() const;

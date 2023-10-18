@@ -46,6 +46,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %}
 
 %define api.pure full
+/** %define parse.error detailed **/
 %define parse.error verbose
 /** 启用位置标识 **/
 %locations
@@ -94,6 +95,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         DATA
         INFILE
         EXPLAIN
+        IS
+        NULL_T
         EQ
         LT
         GT
@@ -115,6 +118,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   Expression *                      expression;
   std::vector<Expression *> *       expression_list;
   std::vector<Value> *              value_list;
+  std::vector<std::vector<Value>> * insert_value_list;
   std::vector<ConditionSqlNode> *   condition_list;
   std::vector<RelAttrSqlNode> *     rel_attr_list;
   std::vector<std::string> *        relation_list;
@@ -140,6 +144,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
 %type <value_list>          value_list
+%type <value_list>          insert_value
+%type <insert_value_list>   insert_value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
 %type <rel_attr_list>       select_attr
@@ -328,6 +334,25 @@ attr_def:
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
+      $$->nullable = false;
+      free($1);
+    }
+    | ID type LBRACE number RBRACE NOT NULL_T
+    {
+      $$ = new AttrInfoSqlNode;
+      $$->type = (AttrType)$2;
+      $$->name = $1;
+      $$->length = $4;
+      $$->nullable = false;
+      free($1);
+    }
+    | ID type LBRACE number RBRACE NULL_T
+    {
+      $$ = new AttrInfoSqlNode;
+      $$->type = (AttrType)$2;
+      $$->name = $1;
+      $$->length = $4;
+      $$->nullable = true;
       free($1);
     }
     | ID type
@@ -336,6 +361,25 @@ attr_def:
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
+      $$->nullable = false;
+      free($1);
+    }
+    | ID type NOT NULL_T
+    {
+      $$ = new AttrInfoSqlNode;
+      $$->type = (AttrType)$2;
+      $$->name = $1;
+      $$->length = 4;
+      $$->nullable = false;
+      free($1);
+    }
+    | ID type NULL_T
+    {
+      $$ = new AttrInfoSqlNode;
+      $$->type = (AttrType)$2;
+      $$->name = $1;
+      $$->length = 4;
+      $$->nullable = true;
       free($1);
     }
     ;
@@ -349,17 +393,48 @@ type:
     | DATE_T   { $$=DATES;}
     ;
 insert_stmt:        /*insert   语句的语法解析树*/
-    INSERT INTO ID VALUES LBRACE value value_list RBRACE 
+    INSERT INTO ID VALUES insert_value insert_value_list
     {
       $$ = new ParsedSqlNode(SCF_INSERT);
       $$->insertion.relation_name = $3;
-      if ($7 != nullptr) {
-        $$->insertion.values.swap(*$7);
+      if ($6 != nullptr) {
+        $$->insertion.values.swap(*$6);
       }
-      $$->insertion.values.emplace_back(*$6);
+      $$->insertion.values.emplace_back(*$5);
       std::reverse($$->insertion.values.begin(), $$->insertion.values.end());
-      delete $6;
+      delete $5;
       free($3);
+    }
+    ;
+
+insert_value_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | COMMA insert_value insert_value_list
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<std::vector<Value>>;
+      }
+      $$->emplace_back(*$2);
+      delete $2;
+    }
+    ;
+
+insert_value:
+    LBRACE value value_list RBRACE 
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<Value>;
+      }
+      $$->emplace_back(*$2);
+      std::reverse($$->begin(), $$->end());
+      delete $2;
     }
     ;
 
@@ -381,11 +456,11 @@ value_list:
 value:
     NUMBER {
       $$ = new Value((int)$1);
-      @$ = @1;
+      // @$ = @1; // useless
     }
     |FLOAT {
       $$ = new Value((float)$1);
-      @$ = @1;
+      // @$ = @1; // useless
     }
     |DATE_STR {
       char *tmp = common::substr($1,1,strlen($1)-2);
@@ -408,6 +483,10 @@ value:
       char *tmp = common::substr($1,1,strlen($1)-2);
       $$ = new Value(tmp);
       free(tmp);
+    }
+    | NULL_T {
+      $$ = new Value();
+      $$->set_null();
     }
     ;
     
@@ -436,6 +515,7 @@ update_stmt:      /*  update 语句的语法解析树*/
       }
       free($2);
       free($4);
+      delete $6;
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
@@ -507,6 +587,10 @@ expression:
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
     }
     | value {
+      if ($1->is_null()) {
+        yyerror(&@$, sql_string, sql_result, scanner, "NULL Cound Not In Expression Now!");
+        YYERROR;
+      }
       $$ = new ValueExpr(*$1);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
@@ -590,11 +674,7 @@ where:
     }
     ;
 condition_list:
-    /* empty */
-    {
-      $$ = nullptr;
-    }
-    | condition {
+    condition {
       $$ = new std::vector<ConditionSqlNode>;
       $$->emplace_back(*$1);
       delete $1;
@@ -654,6 +734,46 @@ condition:
       delete $1;
       
       delete $3;
+    }
+    | rel_attr IS NOT NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_attr = 0;
+      $$->right_value.set_null();
+      $$->comp = CompOp::IS_NOT_NULL;
+      delete $1;
+    }
+    | rel_attr IS NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_attr = 0;
+      $$->right_value.set_null();
+      $$->comp = CompOp::IS_NULL;
+      delete $1;
+    }
+    | value IS NOT NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 0;
+      $$->left_value = *$1;
+      $$->right_is_attr = 0;
+      $$->right_value.set_null();
+      $$->comp = CompOp::IS_NOT_NULL;
+      delete $1;
+    }
+    | value IS NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 0;
+      $$->left_value = *$1;
+      $$->right_is_attr = 0;
+      $$->right_value.set_null();
+      $$->comp = CompOp::IS_NULL;
+      delete $1;
     }
     ;
 

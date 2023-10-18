@@ -212,6 +212,51 @@ RC Table::insert_record(Record &record)
   return rc;
 }
 
+RC Table::insert_records(std::vector<Record> &records)
+{
+  RC rc = RC::SUCCESS;
+
+  // 回滚前 num 个插入
+  // TODO 没有考虑键值重复的情况
+  auto rollback = [this, &records](int num) {
+    for (int i = 0; i < num; ++i) {
+      Record& record = records[i];
+      RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+            name(),
+            rc2,
+            strrc(rc2));
+      }
+      rc2 = record_handler_->delete_record(&record.rid());
+      if (rc2 != RC::SUCCESS) {
+        LOG_PANIC("Failed to rollback record data when insert index entries failed. table name=%s, rc=%d:%s",
+            name(),
+            rc2,
+            strrc(rc2));
+      }
+    }
+  };
+
+  int idx = 0;
+  while (idx < records.size()) {
+    Record& record = records[idx];
+    rc    = record_handler_->insert_record(record.data(), table_meta_.record_size(), &record.rid());
+    if (rc != RC::SUCCESS) {
+      rollback(idx);
+      LOG_ERROR("Insert record failed. table name=%s, rc=%s", table_meta_.name(), strrc(rc));
+      return rc;
+    }
+    rc = insert_entry_of_indexes(record.data(), record.rid());
+    if (rc != RC::SUCCESS) {  // 可能出现了键值重复
+      rollback(idx + 1);
+    }
+    ++idx;
+  }
+
+  return rc;
+}
+
 RC Table::visit_record(const RID &rid, bool readonly, std::function<void(Record &)> visitor)
 {
   return record_handler_->visit_record(rid, readonly, visitor);
@@ -283,6 +328,10 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
   for (int i = 0; i < value_num; i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value     &value = values[i];
+    // double check. no need to cast.
+    if (value.is_null() && field->nullable()) {
+      continue;
+    }
     if (field->type() != value.attr_type()) {
       LOG_ERROR("Invalid value type. table name =%s, field name=%s, type=%d, but given=%d",
           table_meta_.name(),
@@ -297,9 +346,19 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
   int   record_size = table_meta_.record_size();
   char *record_data = (char *)malloc(record_size);
 
+  // null field
+  const FieldMeta* null_field = table_meta_.null_field();
+  common::Bitmap null_bitmap(record_data + null_field->offset(), null_field->len());
+  null_bitmap.clear_bits();
+
   for (int i = 0; i < value_num; i++) {
     const FieldMeta *field    = table_meta_.field(i + normal_field_start_index);
     const Value     &value    = values[i];
+    if (value.is_null()) {
+      // null 值的 data 部分的数据是未定义的
+      null_bitmap.set_bit(normal_field_start_index + i);
+      continue;
+    }
     size_t           copy_len = field->len();
     if (field->type() == CHARS) {
       const size_t data_len = value.length();
@@ -533,6 +592,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
   // 3.获取该列的offset 和 长度
   int       field_offset   = -1;
   int       field_length   = -1;
+  int       field_index    = -1;
   bool      is_index       = false;  // 标识当前列上是否有索引
   const int sys_field_num  = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
@@ -544,7 +604,9 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
     }
     AttrType attr_type  = field_meta->type();
     AttrType value_type = value->attr_type();
-    if (attr_type != value_type) {
+    if (value->is_null() && field_meta->nullable()) {
+      // ok
+    } else if (attr_type != value_type) {
       LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
           name(),
           field_meta->name(),
@@ -554,6 +616,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
     }
     field_offset = field_meta->offset();
     field_length = field_meta->len();
+    field_index = i + sys_field_num;
     if (nullptr != find_index_by_field(field_name)) {
       is_index = true;
     }
@@ -563,17 +626,33 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
     LOG_WARN("field not find ,field name = %s", attr_name);
     return RC::SCHEMA_FIELD_NOT_EXIST;
   }
+
   // 判断 新值与旧值是否相等
-  if (0 == memcmp(record.data() + field_offset, value->data(), field_length)) {
+  const FieldMeta* null_field = table_meta_.null_field();
+  common::Bitmap old_null_bitmap(record.data() + null_field->offset(), null_field->len());
+  if (value->is_null()) {
+    if (old_null_bitmap.get_bit(field_index)) {
+      LOG_WARN("update old value equals new value");
+      return RC::RECORD_DUPLICATE_KEY;
+    }
+  } else if (0 == memcmp(record.data() + field_offset, value->data(), field_length)) {
     LOG_WARN("update old value equals new value");
     return RC::RECORD_DUPLICATE_KEY;
   }
+
   // 写入新的值
   char *old_data = record.data();                        // old_data不能释放，其指向的是frame中的内存
   char *data     = new char[table_meta_.record_size()];  // new_record->data
   memcpy(data, old_data, table_meta_.record_size());
-  memcpy(data + field_offset, value->data(), field_length);
+  common::Bitmap new_null_bitmap(data + null_field->offset(), null_field->len());
+  if (value->is_null()) {
+    new_null_bitmap.set_bit(field_index);
+  } else {
+    new_null_bitmap.clear_bit(field_index);
+    memcpy(data + field_offset, value->data(), field_length);
+  }
   record.set_data(data);  // 谁来管理old_data呢？
+
   if (is_index) {
     rc = insert_entry_of_indexes(record.data(), record.rid());
     if (rc != RC::SUCCESS) {  // 可能出现了键值重复
