@@ -87,7 +87,7 @@ extern int yydebug;
     DATA = 293,
     INFILE = 294,
     EXPLAIN = 295,
-    NOT = 296,
+    IS = 296,
     NULL_T = 297,
     EQ = 298,
     LT = 299,
@@ -95,13 +95,14 @@ extern int yydebug;
     LE = 301,
     GE = 302,
     NE = 303,
-    LIKE = 304,
-    NUMBER = 305,
-    FLOAT = 306,
-    ID = 307,
-    SSS = 308,
-    DATE_STR = 309,
-    UMINUS = 310
+    NOT = 304,
+    LIKE = 305,
+    NUMBER = 306,
+    FLOAT = 307,
+    ID = 308,
+    SSS = 309,
+    DATE_STR = 310,
+    UMINUS = 311
   };
 #endif
 
@@ -128,7 +129,7 @@ union YYSTYPE
   int                               number;
   float                             floats;
 
-#line 132 "yacc_sql.hpp"
+#line 133 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

@@ -95,7 +95,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         DATA
         INFILE
         EXPLAIN
-        NOT
+        IS
         NULL_T
         EQ
         LT
@@ -640,11 +640,7 @@ where:
     }
     ;
 condition_list:
-    /* empty */
-    {
-      $$ = nullptr;
-    }
-    | condition {
+    condition {
       $$ = new std::vector<ConditionSqlNode>;
       $$->emplace_back(*$1);
       delete $1;
@@ -704,6 +700,46 @@ condition:
       delete $1;
       
       delete $3;
+    }
+    | rel_attr IS NOT NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_attr = 0;
+      $$->right_value.set_null();
+      $$->comp = CompOp::IS_NOT_NULL;
+      delete $1;
+    }
+    | rel_attr IS NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 1;
+      $$->left_attr = *$1;
+      $$->right_is_attr = 0;
+      $$->right_value.set_null();
+      $$->comp = CompOp::IS_NULL;
+      delete $1;
+    }
+    | value IS NOT NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 0;
+      $$->left_value = *$1;
+      $$->right_is_attr = 0;
+      $$->right_value.set_null();
+      $$->comp = CompOp::IS_NOT_NULL;
+      delete $1;
+    }
+    | value IS NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_is_attr = 0;
+      $$->left_value = *$1;
+      $$->right_is_attr = 0;
+      $$->right_value.set_null();
+      $$->comp = CompOp::IS_NULL;
+      delete $1;
     }
     ;
 

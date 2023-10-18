@@ -69,6 +69,9 @@ public:
   bool is_null() const {
     return this->attr_type_ == NULLS;
   }
+  bool is_string() const {
+    return this->attr_type_ == CHARS;
+  }
   void set_data(char *data, int length);
   void set_data(const char *data, int length)
   {
