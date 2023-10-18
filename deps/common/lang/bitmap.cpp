@@ -79,7 +79,7 @@ void Bitmap::clear_bit(int index)
 
 void Bitmap::clear_bits()
 {
-  memset(bitmap_, 0, size_);
+  memset(bitmap_, 0, bytes(size_));
 }
 
 int Bitmap::next_unsetted_bit(int start)

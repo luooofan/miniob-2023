@@ -348,7 +348,7 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
 
   // null field
   const FieldMeta* null_field = table_meta_.null_field();
-  common::Bitmap null_bitmap(record_data + null_field->offset(), null_field->len());
+  common::Bitmap null_bitmap(record_data + null_field->offset(), table_meta_.field_num());
   null_bitmap.clear_bits();
 
   for (int i = 0; i < value_num; i++) {
@@ -629,7 +629,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
 
   // 判断 新值与旧值是否相等
   const FieldMeta* null_field = table_meta_.null_field();
-  common::Bitmap old_null_bitmap(record.data() + null_field->offset(), null_field->len());
+  common::Bitmap old_null_bitmap(record.data() + null_field->offset(), table_meta_.field_num());
   if (value->is_null()) {
     if (old_null_bitmap.get_bit(field_index)) {
       LOG_WARN("update old value equals new value");
@@ -644,7 +644,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
   char *old_data = record.data();                        // old_data不能释放，其指向的是frame中的内存
   char *data     = new char[table_meta_.record_size()];  // new_record->data
   memcpy(data, old_data, table_meta_.record_size());
-  common::Bitmap new_null_bitmap(data + null_field->offset(), null_field->len());
+  common::Bitmap new_null_bitmap(data + null_field->offset(), table_meta_.field_num());
   if (value->is_null()) {
     new_null_bitmap.set_bit(field_index);
   } else {

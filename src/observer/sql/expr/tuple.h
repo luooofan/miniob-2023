@@ -152,12 +152,14 @@ public:
     ASSERT(!this->speces_.empty(), "RowTuple speces empty!");
     const FieldMeta* null_field = this->speces_.front()->field().meta();
     ASSERT(nullptr != null_field && CHARS == null_field->type(), "RowTuple get null field failed!");
-    bitmap_.init(record->data() + null_field->offset(), null_field->len());
+    bitmap_.init(record->data() + null_field->offset(), this->speces_.size());
   }
 
-  void set_schema(const Table *table, const std::vector<FieldMeta> *fields)
+  void set_schema(const Table *table)
   {
+    ASSERT(nullptr != table, "RowTuple set_schema with a null table");
     table_ = table;
+    const std::vector<FieldMeta> *fields = table_->table_meta().field_metas();
     this->speces_.reserve(fields->size());
     for (const FieldMeta &field : *fields) {
       speces_.push_back(new FieldExpr(table, &field));
