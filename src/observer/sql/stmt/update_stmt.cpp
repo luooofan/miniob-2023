@@ -16,8 +16,8 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
-UpdateStmt::UpdateStmt(Table *table, const Value *values, int value_amount,FieldMeta field,FilterStmt * filter_stmt)
-    : table_(table), values_(values), value_amount_(value_amount),filter_stmt_(filter_stmt)
+UpdateStmt::UpdateStmt(Table *table, const Value *values, int value_amount, FieldMeta field, FilterStmt * filter_stmt)
+  : table_(table), values_(values), value_amount_(value_amount), filter_stmt_(filter_stmt)
 {
   fields_.push_back(field);
 }
@@ -45,31 +45,22 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
   }
   // check fields type
   // update t1 set c1 = 1;
+  //1.检查 表t1 有没有c1 列
+  //2.检查 c1 列的类型 与 1 是否匹配
   const TableMeta &table_meta = table->table_meta();
-  const int sys_field_num = table_meta.sys_field_num();
-   //1.检查 表t1 有没有c1 列
-   //2.检查 c1 列的类型 与 1 是否匹配
-  const std::vector<FieldMeta>* fieldMeta = table_meta.field_metas();
+  const FieldMeta* update_field = table_meta.field(update.attribute_name.c_str());
   bool valid = false;
-  FieldMeta update_field;
-  for ( FieldMeta field :*fieldMeta) {
-    if( 0 == strcmp(field.name(),update.attribute_name.c_str()))
-    {
-      if(field.type() == update.value.attr_type() || (update.value.is_null() && field.nullable()))
-      {
-        if(field.type() == CHARS && field.len() < update.value.length())
-        {
-            return RC::INVALID_ARGUMENT;
-        }
+  if (nullptr != update_field) {
+    if (update_field->type() == update.value.attr_type() || (update.value.is_null() && update_field->nullable())) {
+      if (update_field->type() == CHARS && update_field->len() < update.value.length()) {
+        LOG_WARN("update chars with longer length");
+      } else {
         valid = true;
-        update_field = field;
-        break;
       }
     }
   }
-  if(!valid)
-  {
-    LOG_WARN("update field type mismatch. table=%s",table_name);
+  if (!valid) {
+    LOG_WARN("update field type mismatch. table=%s", table_name);
     return RC::INVALID_ARGUMENT;
   }
 
@@ -82,7 +73,7 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
     return rc;
   }
-    // everything alright
-  stmt = new UpdateStmt(table, &(update.value), 1,update_field,filter_stmt);
+  // everything alright
+  stmt = new UpdateStmt(table, &(update.value), 1, *update_field, filter_stmt);
   return RC::SUCCESS;
 }
