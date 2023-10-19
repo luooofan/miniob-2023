@@ -107,6 +107,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         NE
         NOT
         LIKE
+        UNIQUE
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -130,6 +131,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   char *                            string;
   int                               number;
   float                             floats;
+  bool                              boolean;
 }
 
 %token <number> NUMBER
@@ -147,6 +149,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <condition>           condition
 %type <value>               value
 %type <number>              number
+%type <boolean>             unique_option
 %type <comp>                comp_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
@@ -280,25 +283,35 @@ desc_table_stmt:
     ;
 
 create_index_stmt:    /*create index 语句的语法解析树*/
-    CREATE INDEX ID ON ID LBRACE ID idx_col_list RBRACE
+    CREATE unique_option INDEX ID ON ID LBRACE ID idx_col_list RBRACE
     {
       $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
       CreateIndexSqlNode &create_index = $$->create_index;
-      create_index.index_name = $3;
-      create_index.relation_name = $5;
+      create_index.unique = $2;
+      create_index.index_name = $4;
+      create_index.relation_name = $6;
       
-      std::vector<std::string> *idx_cols = $8;
+      std::vector<std::string> *idx_cols = $9;
       if (nullptr != idx_cols) {
         create_index.attr_names.swap(*idx_cols);
-        delete $8;
+        delete $9;
       }
-      create_index.attr_names.emplace_back($7);
+      create_index.attr_names.emplace_back($8);
       std::reverse(create_index.attr_names.begin(), create_index.attr_names.end());
-      free($3);
-      free($5);
-      free($7);
+      free($4);
+      free($6);
+      free($8);
     }
     ;
+unique_option:
+    /* empty */
+    {
+      $$ = false;
+    }
+    | UNIQUE
+    {
+      $$ = true;
+    }
 idx_col_list:
     /* empty */
     {

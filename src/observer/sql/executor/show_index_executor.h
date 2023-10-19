@@ -54,7 +54,7 @@ public:
       for (size_t i = 0; i < indexes.size(); i++) {
         for (size_t j = 1; j < indexes[i]->index_meta().field().size(); j++) {
           oper->append({table->name(),                      // Table
-                        false ? "0" :"1",                   // Non_unique
+                        indexes[i]->index_meta().unique() ? "0" :"1",  // Unique
                         indexes[i]->index_meta().name(),    // Key_name
                         to_string(j-1),                     // Seq_in_index
                         indexes[i]->index_meta().field().at(j)}); // Column_name

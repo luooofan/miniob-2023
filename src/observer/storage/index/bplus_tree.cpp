@@ -810,7 +810,7 @@ RC BplusTreeHandler::create(const char *file_name, AttrType attr_type, int attr_
     return RC::NOMEM;
   }
 
-  key_comparator_.init(1, 0, file_header->attr_type, file_header->attr_length);
+  key_comparator_.init(false, 1, 0, file_header->attr_type, file_header->attr_length);
   key_printer_.init(1, file_header->attr_type, file_header->attr_length);
 
   this->sync();
@@ -819,8 +819,8 @@ RC BplusTreeHandler::create(const char *file_name, AttrType attr_type, int attr_
   return RC::SUCCESS;
 }
 
-RC BplusTreeHandler::create(const char *file_name, const std::vector<int> &field_ids, const std::vector<const FieldMeta*> &fields, 
-    int internal_max_size /* = -1*/, int leaf_max_size /* = -1 */)
+RC BplusTreeHandler::create(const char *file_name, const bool unique, const std::vector<int> &field_ids, 
+    const std::vector<const FieldMeta*> &fields, int internal_max_size /* = -1*/, int leaf_max_size /* = -1 */)
 {
   BufferPoolManager &bpm = BufferPoolManager::instance();
   RC rc = bpm.create_file(file_name);
@@ -870,6 +870,7 @@ RC BplusTreeHandler::create(const char *file_name, const std::vector<int> &field
   file_header->internal_max_size = internal_max_size;
   file_header->leaf_max_size = leaf_max_size;
   file_header->root_page = BP_INVALID_PAGE_NUM;
+  file_header->unique = unique;
   file_header->attr_num = fields.size();
   for (int i = 0; i < fields.size(); i++) {
     file_header->field_id[i] = field_ids[i];
@@ -893,7 +894,7 @@ RC BplusTreeHandler::create(const char *file_name, const std::vector<int> &field
     return RC::NOMEM;
   }
 
-  key_comparator_.init(file_header->attr_num, file_header->field_id, file_header->attr_type, file_header->attr_length);
+  key_comparator_.init(file_header->unique, file_header->attr_num, file_header->field_id, file_header->attr_type, file_header->attr_length);
   key_printer_.init(file_header->attr_num, file_header->attr_type, file_header->attr_length);
 
   this->sync();
@@ -940,7 +941,7 @@ RC BplusTreeHandler::open(const char *file_name)
   // close old page_handle
   disk_buffer_pool->unpin_page(frame);
 
-  key_comparator_.init(file_header_.attr_num, file_header_.field_id, file_header_.attr_type, file_header_.attr_length);
+  key_comparator_.init(file_header_.unique, file_header_.attr_num, file_header_.field_id, file_header_.attr_type, file_header_.attr_length);
   key_printer_.init(file_header_.attr_num, file_header_.attr_type, file_header_.attr_length);
   LOG_INFO("Successfully open index %s", file_name);
   return RC::SUCCESS;

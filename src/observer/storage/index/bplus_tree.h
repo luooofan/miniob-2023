@@ -139,9 +139,10 @@ public:
     attr_comparator_.init(1, 0, &type, &length);
   }
 
-  void init(int attr_num, int *field_id, AttrType *type, int *length)
+  void init(bool unique, int attr_num, int *field_id, AttrType *type, int *length)
   {
     attr_comparator_.init(attr_num, field_id, type, length);
+    unique_ = unique;
   }
 
   const AttrComparator &attr_comparator() const
@@ -154,14 +155,17 @@ public:
     int result = attr_comparator_(v1, v2);
     if (result != 0) {
       return result;
+    }else if (!unique_) {
+      /* 唯一索引不比较RID */
+      const RID *rid1 = (const RID *)(v1 + attr_comparator_.attr_length());
+      const RID *rid2 = (const RID *)(v2 + attr_comparator_.attr_length());
+      result = RID::compare(rid1, rid2);
     }
-
-    const RID *rid1 = (const RID *)(v1 + attr_comparator_.attr_length());
-    const RID *rid2 = (const RID *)(v2 + attr_comparator_.attr_length());
-    return RID::compare(rid1, rid2);
+    return result;
   }
 
 private:
+  bool unique_;
   AttrComparator attr_comparator_;
 };
 
@@ -283,6 +287,7 @@ struct IndexFileHeader
   int32_t internal_max_size;  ///< 内部节点最大的键值对数
   int32_t leaf_max_size;      ///< 叶子节点最大的键值对数
   int32_t key_length;         ///< attr length + sizeof(RID)
+  int32_t unique;            ///< 是否是唯一索引
   int32_t attr_num;           ///< 索引列数量
   int32_t field_id[MAX_INDEX_FIELD_NUM];
   int32_t attr_length[MAX_INDEX_FIELD_NUM];       ///< 键值的长度
@@ -536,6 +541,7 @@ public:
             int internal_max_size = -1, 
             int leaf_max_size = -1);
   RC create(const char *file_name, 
+            const bool unique,
             const std::vector<int> &field_ids,
             const std::vector<const FieldMeta*> &fields,
             int internal_max_size = -1, 
