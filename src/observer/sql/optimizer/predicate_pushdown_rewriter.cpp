@@ -59,7 +59,7 @@ RC PredicatePushdownRewriter::rewrite(std::unique_ptr<LogicalOperator> &oper, bo
 
   if (!pushdown_exprs.empty()) {
     change_made = true;
-    table_get_oper->set_predicates(std::move(pushdown_exprs));
+    table_get_oper->set_predicates(std::move(pushdown_exprs));//这里将过滤谓词下推到下层算子
   }
   return rc;
 }

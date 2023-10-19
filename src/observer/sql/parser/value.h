@@ -98,7 +98,21 @@ public:
   {
     return attr_type_;
   }
-
+  bool is_minus() const
+  {
+    if(attr_type_ == INTS )
+    {
+      return num_value_.int_value_ < 0;
+    }
+    else if(attr_type_ == FLOATS)
+    {
+      return num_value_.float_value_ < 0;
+    }
+    else
+    {
+      return false;
+    }
+  }
 public:
   /**
    * 获取对应的值
@@ -109,6 +123,7 @@ public:
   float get_float() const;
   std::string get_string() const;
   bool get_boolean() const;
+
 
 private:
   AttrType attr_type_ = UNDEFINED;

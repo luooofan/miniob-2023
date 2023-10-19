@@ -277,6 +277,7 @@ public:
     }
 
     const TupleCellSpec *spec = speces_[index];
+    return spec->expression()->get_value(*tuple_, cell);
     return tuple_->find_cell(*spec, cell);
   }
 

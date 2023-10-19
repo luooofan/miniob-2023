@@ -54,7 +54,7 @@ RC get_table_and_field(Db *db, Table *default_table, std::unordered_map<std::str
     const RelAttrSqlNode &attr, Table *&table, const FieldMeta *&field)
 {
   if (common::is_blank(attr.relation_name.c_str())) {
-    table = default_table;
+    table = default_table;//使用默认的表
   } else if (nullptr != tables) {
     auto iter = tables->find(attr.relation_name);
     if (iter != tables->end()) {
@@ -89,50 +89,38 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     return RC::INVALID_ARGUMENT;
   }
 
-  filter_unit = new FilterUnit;
+  filter_unit = new FilterUnit;//filterUnit 左右应该都是表达式
   DEFER([&](){
     if (RC::SUCCESS != rc && nullptr != filter_unit) {
       delete filter_unit;
       filter_unit = nullptr;
     }
   });
-
-  if (condition.left_is_attr) {
-    Table *table = nullptr;
-    const FieldMeta *field = nullptr;
-    rc = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
-    if (rc != RC::SUCCESS) {
-      LOG_WARN("cannot find attr");
-      return rc;
-    }
-    FilterObj filter_obj;
-    filter_obj.init_attr(Field(table, field));
-    filter_unit->set_left(filter_obj);
-  } else {
-    FilterObj filter_obj;
-    filter_obj.init_value(condition.left_value);
-    filter_unit->set_left(filter_obj);
+  //构造新的左 右孩子表达式
+  Expression * left = nullptr;
+  const std::vector<Table *>table_arr;
+  rc = condition.left_expr->create_expression(*tables,table_arr,db,left,default_table);
+  if(rc != RC::SUCCESS )
+  {
+    LOG_WARN("filter_stmt create lhs expression error");
+    return rc;
   }
-
-  if (condition.right_is_attr) {
-    Table *table = nullptr;
-    const FieldMeta *field = nullptr;
-    rc = get_table_and_field(db, default_table, tables, condition.right_attr, table, field);
-    if (rc != RC::SUCCESS) {
-      LOG_WARN("cannot find attr");
-      return rc;
-    }
-    FilterObj filter_obj;
-    filter_obj.init_attr(Field(table, field));
-    filter_unit->set_right(filter_obj);
-  } else {
-    // IS_NULL or IS_NOT_NULL appear here. rhs is value(NULL)
-    FilterObj filter_obj;
-    filter_obj.init_value(condition.right_value);
-    filter_unit->set_right(filter_obj);
+  Expression * right = nullptr;
+  rc = condition.right_expr->create_expression(*tables,table_arr,db,right,default_table);
+  if(rc != RC::SUCCESS)
+  {
+    LOG_WARN("filter_stmt create rhs expression error");
+    return rc;
   }
+  ASSERT(left!= nullptr,"filter_stmt create lhs expression error");
+  ASSERT(right!= nullptr,"filter_stmt create rhs expression error");
+  FilterObj left_filter_obj,right_filter_obj;
+  left_filter_obj.expr = left;
+  right_filter_obj.expr = right;
+
+  filter_unit->set_left(left_filter_obj);
+  filter_unit->set_right(right_filter_obj);
   filter_unit->set_comp(comp);
-
   // 检查两个类型是否能够比较
   return rc;
 }

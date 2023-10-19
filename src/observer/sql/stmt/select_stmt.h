@@ -20,7 +20,10 @@ See the Mulan PSL v2 for more details. */
 #include "common/rc.h"
 #include "sql/stmt/stmt.h"
 #include "storage/field/field.h"
+#include "sql/executor/sql_result.h"
+#include "event/sql_event.h"
 
+class SQLStageEvent;
 class FieldMeta;
 class FilterStmt;
 class Db;
@@ -42,7 +45,7 @@ public:
   }
 
 public:
-  static RC create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt);
+  static RC create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt,SQLStageEvent *sql_event);
 
 public:
   const std::vector<Table *> &tables() const
@@ -58,7 +61,12 @@ public:
     return filter_stmt_;
   }
 
+  std::vector<Expression *>& projects()
+  {
+    return projects_;
+  }
 private:
+  std::vector<Expression *> projects_;
   std::vector<Field> query_fields_;
   std::vector<Table *> tables_;
   FilterStmt *filter_stmt_ = nullptr;
