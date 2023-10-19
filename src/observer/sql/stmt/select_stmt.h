@@ -35,18 +35,15 @@ class SelectStmt : public Stmt
 public:
   class JoinTables {
   public:
-    JoinTables(Table* base_table) : base_table_(base_table) {}
+    JoinTables() = default;
+    ~JoinTables() = default;
     JoinTables(JoinTables&& other) {
-      base_table_ = other.base_table_;
       join_tables_.swap(other.join_tables_);
       on_conds_.swap(other.on_conds_);
     }
     void push_join_table(Table* table, FilterStmt* fu) {
       join_tables_.emplace_back(table);
       on_conds_.emplace_back(fu);
-    }
-    const Table* base_table() const {
-      return base_table_;
     }
     const std::vector<Table*>& join_tables() const {
       return join_tables_;
@@ -55,7 +52,6 @@ public:
       return on_conds_;
     }
   private:
-    Table* base_table_ = nullptr;
     std::vector<Table*> join_tables_;
     std::vector<FilterStmt*> on_conds_;
   };

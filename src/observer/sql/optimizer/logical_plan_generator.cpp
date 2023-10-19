@@ -99,19 +99,24 @@ RC LogicalPlanGenerator::create_plan(
       }
     }
     unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, fields, true/*readonly*/));
+    unique_ptr<LogicalOperator> predicate_oper;
+    if (nullptr != fu) {
+      if (RC rc = create_plan(fu, predicate_oper); rc != RC::SUCCESS) {
+        LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
+        return rc;
+      }
+    }
     if (prev_oper == nullptr) {
-      ASSERT(nullptr == fu, "ERROR!");
+      // ASSERT(nullptr == fu, "ERROR!");
+      if (predicate_oper) {
+        static_cast<TableGetLogicalOperator*>(table_get_oper.get())->set_predicates(std::move(predicate_oper->expressions()));
+      }
       prev_oper = std::move(table_get_oper);
     } else {
       unique_ptr<JoinLogicalOperator> join_oper = std::make_unique<JoinLogicalOperator>();
       join_oper->add_child(std::move(prev_oper));
       join_oper->add_child(std::move(table_get_oper));
-      if (nullptr != fu) {
-        unique_ptr<LogicalOperator> predicate_oper;
-        if (RC rc = create_plan(fu, predicate_oper); rc != RC::SUCCESS) {
-          LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
-          return rc;
-        }
+      if (predicate_oper) {
         predicate_oper->add_child(std::move(join_oper));
         prev_oper = std::move(predicate_oper);
       } else {
@@ -124,10 +129,6 @@ RC LogicalPlanGenerator::create_plan(
   unique_ptr<LogicalOperator> outside_prev_oper(nullptr); // 笛卡尔积
   for (auto& jt : tables) {
     unique_ptr<LogicalOperator> prev_oper(nullptr); // INNER JOIN
-    if (rc = process_one_table(prev_oper, const_cast<Table*>(jt.base_table()), nullptr); RC::SUCCESS != rc) {
-      return rc;
-    }
-    // now prev_oper is TableGetLogicalOperator
     auto& join_tables = jt.join_tables();
     auto& on_conds = jt.on_conds();
     ASSERT(join_tables.size() == on_conds.size(), "ERROR!");
