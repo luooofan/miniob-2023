@@ -33,6 +33,33 @@ class Table;
 class SelectStmt : public Stmt 
 {
 public:
+  class JoinTables {
+  public:
+    JoinTables(Table* base_table) : base_table_(base_table) {}
+    JoinTables(JoinTables&& other) {
+      base_table_ = other.base_table_;
+      join_tables_.swap(other.join_tables_);
+      on_conds_.swap(other.on_conds_);
+    }
+    void push_join_table(Table* table, FilterStmt* fu) {
+      join_tables_.emplace_back(table);
+      on_conds_.emplace_back(fu);
+    }
+    const Table* base_table() const {
+      return base_table_;
+    }
+    const std::vector<Table*>& join_tables() const {
+      return join_tables_;
+    }
+    const std::vector<FilterStmt*>& on_conds() const {
+      return on_conds_;
+    }
+  private:
+    Table* base_table_ = nullptr;
+    std::vector<Table*> join_tables_;
+    std::vector<FilterStmt*> on_conds_;
+  };
+public:
   SelectStmt() = default;
   ~SelectStmt() override;
 
@@ -45,9 +72,9 @@ public:
   static RC create(Db *db, const SelectSqlNode &select_sql, Stmt *&stmt);
 
 public:
-  const std::vector<Table *> &tables() const
+  const std::vector<JoinTables> &join_tables() const
   {
-    return tables_;
+    return join_tables_;
   }
   const std::vector<Field> &query_fields() const
   {
@@ -60,6 +87,6 @@ public:
 
 private:
   std::vector<Field> query_fields_;
-  std::vector<Table *> tables_;
+  std::vector<JoinTables> join_tables_;
   FilterStmt *filter_stmt_ = nullptr;
 };
