@@ -249,19 +249,23 @@ int Value::compare(const Value &other) const
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == INTS) {
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
-  } else if (this->attr_type_ == INTS && other.attr_type_ == DOUBLES) {
-    double this_data = this->num_value_.int_value_;
-    return common::compare_double((void *)&this_data, (void *)&other.num_value_.double_value_);
-  } else if (this->attr_type_ == DOUBLES && other.attr_type_ == INTS) {
-    double other_data = other.num_value_.int_value_;
-    return common::compare_double((void *)&this->num_value_.double_value_, (void *)&other_data);
-  } else if (this->attr_type_ == FLOATS && other.attr_type_ == DOUBLES) {
-    float this_data = this->num_value_.float_value_;
-    return common::compare_double((void *)&this_data, (void *)&other.num_value_.double_value_);
-  } else if (this->attr_type_ == DOUBLES && other.attr_type_ == FLOATS) {
-    float other_data = other.num_value_.float_value_;
-    return common::compare_double((void *)&this->num_value_.double_value_, (void *)&other_data);
-  } 
+  // } else if (this->attr_type_ == INTS && other.attr_type_ == DOUBLES) {
+  //   double this_data = this->num_value_.int_value_;
+  //   return common::compare_double((void *)&this_data, (void *)&other.num_value_.double_value_);
+  // } else if (this->attr_type_ == DOUBLES && other.attr_type_ == INTS) {
+  //   double other_data = other.num_value_.int_value_;
+  //   return common::compare_double((void *)&this->num_value_.double_value_, (void *)&other_data);
+  // } else if (this->attr_type_ == FLOATS && other.attr_type_ == DOUBLES) {
+  //   float this_data = this->num_value_.float_value_;
+  //   return common::compare_double((void *)&this_data, (void *)&other.num_value_.double_value_);
+  // } else if (this->attr_type_ == DOUBLES && other.attr_type_ == FLOATS) {
+  //   float other_data = other.num_value_.float_value_;
+  //   return common::compare_double((void *)&this->num_value_.double_value_, (void *)&other_data);
+  } else {
+    double this_data = this->get_double();
+    double other_data = other.get_double();
+    return common::compare_double((void *)&this_data, (void *)&other_data);
+  }
   LOG_WARN("not supported");
   return -1;  // TODO return rc?
 }
@@ -337,7 +341,7 @@ double Value::get_double() const
   switch (attr_type_) {
     case CHARS: {
       try {
-        return std::stof(str_value_);
+        return std::stod(str_value_);
       } catch (std::exception const &ex) {
         LOG_TRACE("failed to convert string to float. s=%s, ex=%s", str_value_.c_str(), ex.what());
         return 0.0;
