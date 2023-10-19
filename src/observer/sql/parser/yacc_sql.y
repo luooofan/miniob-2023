@@ -625,10 +625,6 @@ expression:
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
     }
     | value {
-      if ($1->is_null()) {
-        yyerror(&@$, sql_string, sql_result, scanner, "NULL Cound Not In Expression Now!");
-        YYERROR;
-      }
       $$ = new ValueExpr(*$1);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
