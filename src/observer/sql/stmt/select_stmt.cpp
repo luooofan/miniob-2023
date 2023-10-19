@@ -52,13 +52,13 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     return RC::INVALID_ARGUMENT;
   }
 
-  // collect tables in `from` statement
   std::vector<Table *> tables;
   std::unordered_map<std::string, Table *> table_map;
-  for (size_t i = 0; i < select_sql.relations.size(); i++) {
-    const char *table_name = select_sql.relations[i].c_str();
+  std::vector<JoinTables> join_tables;
+  // collect tables in `from` statement
+  auto check_and_collect_tables = [&](const char* table_name) {
     if (nullptr == table_name) {
-      LOG_WARN("invalid argument. relation name is null. index=%d", i);
+      LOG_WARN("invalid argument. relation name is null.");
       return RC::INVALID_ARGUMENT;
     }
 
@@ -70,6 +70,40 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 
     tables.push_back(table);
     table_map.insert(std::pair<std::string, Table *>(table_name, table));
+    return RC::SUCCESS;
+  };
+
+  for (size_t i = 0; i < select_sql.relations.size(); ++i) {
+    const InnerJoinSqlNode& relations = select_sql.relations[i];
+
+    const std::string& base_relation = relations.base_relation;
+    if (RC rc = check_and_collect_tables(base_relation.c_str()); rc != RC::SUCCESS) {
+      return rc;
+    }
+    // construct JoinTables
+    JoinTables jt(table_map[base_relation]);
+
+    const std::vector<std::string>& join_relations = relations.join_relations;
+    const std::vector<std::vector<ConditionSqlNode>>& conditions = relations.conditions;
+    ASSERT(join_relations.size() == conditions.size(), "Select InnerJoin size error!");
+    for (size_t j = 0; j < join_relations.size(); ++j) {
+      // check and collect table
+      if (RC rc = check_and_collect_tables(join_relations[j].c_str()); rc != RC::SUCCESS) {
+        return rc;
+      }
+      // create FilterStmt
+      FilterStmt* filter_stmt;
+      if (RC rc = FilterStmt::create(db, table_map[base_relation], &table_map, conditions[j].data(), conditions[j].size(), filter_stmt);
+             rc != RC::SUCCESS) {
+        return rc;
+      }
+      ASSERT(nullptr != filter_stmt, "FilterStmt is null!");
+      // fill JoinTables
+      jt.push_join_table(table_map[join_relations[j].c_str()], filter_stmt);
+    }
+
+    // push jt to join_tables
+    join_tables.emplace_back(std::move(jt));
   }
 
   // collect query exprs in `select` statement
@@ -137,7 +171,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();
   // TODO add expression copy
-  select_stmt->tables_.swap(tables);
+  select_stmt->join_tables_.swap(join_tables);
   select_stmt->projects_.swap(projects);
   select_stmt->filter_stmt_ = filter_stmt;
   stmt = select_stmt;
