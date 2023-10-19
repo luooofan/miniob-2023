@@ -61,3 +61,15 @@ void ProjectPhysicalOperator::add_projection(const Table *table, const FieldMeta
   TupleCellSpec *spec = new TupleCellSpec(table->name(), field_meta->name(), field_meta->name());
   tuple_.add_cell_spec(spec);
 }
+
+void ProjectPhysicalOperator::add_projection(Expression *project, bool is_single_table)
+{
+  // 对单表来说，展示的(alias) 字段总是字段名称，
+  // 对多表查询来说，展示的alias 需要带表名字
+  TupleCellSpec *spec = new TupleCellSpec(project);
+  //std::string alias_name;
+  //gen_project_name(project, is_single_table, alias_name);
+  //auto spec_alias = std::make_shared<std::string>(alias_name);
+  //spec->set_alias(spec_alias);
+  tuple_.add_cell_spec(spec);
+}

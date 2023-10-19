@@ -29,6 +29,7 @@ struct FilterObj
   bool is_attr;
   Field field;
   Value value;
+  Expression * expr= nullptr;
 
   void init_attr(const Field &field)
   {

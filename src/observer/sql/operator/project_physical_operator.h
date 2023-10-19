@@ -33,6 +33,7 @@ public:
     
   }
   void add_projection(const Table *table, const FieldMeta *field);
+  void add_projection(Expression *project, bool is_single_table);
 
   PhysicalOperatorType type() const override
   {

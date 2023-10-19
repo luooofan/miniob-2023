@@ -30,6 +30,9 @@ class ProjectLogicalOperator : public LogicalOperator
 {
 public:
   ProjectLogicalOperator(const std::vector<Field> &fields);
+  ProjectLogicalOperator(const std::vector<Expression *> &projects):projects_(projects)
+  {
+  }
   virtual ~ProjectLogicalOperator() = default;
 
   LogicalOperatorType type() const override
@@ -49,11 +52,15 @@ public:
   {
     return fields_;
   }
-
+  const std::vector<Expression*> &projects() const
+  {
+    return projects_;
+  }
 private:
   //! 投影映射的字段名称
   //! 并不是所有的select都会查看表字段，也可能是常量数字、字符串，
   //! 或者是执行某个函数。所以这里应该是表达式Expression。
   //! 不过现在简单处理，就使用字段来描述
   std::vector<Field> fields_;
+  std::vector<Expression *> projects_;
 };

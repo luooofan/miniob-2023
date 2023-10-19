@@ -16,6 +16,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/expr/tuple.h"
 #include <regex>
 #include <string>
+#include "common/lang/string.h"
+
 using namespace std;
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
@@ -182,15 +184,16 @@ RC ComparisonExpr::try_get_value(Value &cell) const
 
 RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
 {
+  //c1 + c2 > c2 + c3
   Value left_value;
   Value right_value;
 
-  RC rc = left_->get_value(tuple, left_value);
+  RC rc = left_->get_value(tuple, left_value);//计算 c1+c2
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
     return rc;
   }
-  rc = right_->get_value(tuple, right_value);
+  rc = right_->get_value(tuple, right_value);//计算 c2 + c3;
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
     return rc;
@@ -218,8 +221,8 @@ RC ConjunctionExpr::get_value(const Tuple &tuple, Value &value) const
   }
 
   Value tmp_value;
-  for (const unique_ptr<Expression> &expr : children_) {
-    rc = expr->get_value(tuple, tmp_value);
+  for (const unique_ptr<Expression> &expr : children_) {//多个条件以 AND 连接
+    rc = expr->get_value(tuple, tmp_value);//这边会进行表达式的计算
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to get value by child expression. rc=%s", strrc(rc));
       return rc;
@@ -250,13 +253,17 @@ AttrType ArithmeticExpr::value_type() const
   if (!right_) {
     return left_->value_type();
   }
-
+  if(left_->value_type() == AttrType::NULLS 
+    || right_->value_type() == AttrType::NULLS)
+  {
+    return AttrType::NULLS;
+  }
   if (left_->value_type() == AttrType::INTS &&
       right_->value_type() == AttrType::INTS &&
       arithmetic_type_ != Type::DIV) {
     return AttrType::INTS;
   }
-  
+
   return AttrType::FLOATS;
 }
 
@@ -265,7 +272,11 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
   RC rc = RC::SUCCESS;
 
   const AttrType target_type = value_type();
-
+  if(target_type == AttrType::NULLS || left_value.is_null() || right_value.is_null())
+  {
+    value.set_null();
+    return rc;
+  }
   switch (arithmetic_type_) {
     case Type::ADD: {
       if (target_type == AttrType::INTS) {
@@ -295,14 +306,16 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
       if (target_type == AttrType::INTS) {
         if (right_value.get_int() == 0) {
           // NOTE: 设置为整数最大值是不正确的。通常的做法是设置为NULL，但是当前的miniob没有NULL概念，所以这里设置为整数最大值。
-          value.set_int(numeric_limits<int>::max());
+          //value.set_int(numeric_limits<int>::max());
+          value.set_null();
         } else {
           value.set_int(left_value.get_int() / right_value.get_int());
         }
       } else {
         if (right_value.get_float() > -EPSILON && right_value.get_float() < EPSILON) {
           // NOTE: 设置为浮点数最大值是不正确的。通常的做法是设置为NULL，但是当前的miniob没有NULL概念，所以这里设置为浮点数最大值。
-          value.set_float(numeric_limits<float>::max());
+          //value.set_float(numeric_limits<float>::max());
+          value.set_null();
         } else {
           value.set_float(left_value.get_float() / right_value.get_float());
         }
@@ -337,7 +350,10 @@ RC ArithmeticExpr::get_value(const Tuple &tuple, Value &value) const
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
     return rc;
   }
-  rc = right_->get_value(tuple, right_value);
+  if(right_)
+  {
+    rc = right_->get_value(tuple, right_value);
+  }
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
     return rc;
@@ -367,4 +383,95 @@ RC ArithmeticExpr::try_get_value(Value &value) const
   }
 
   return calc_value(left_value, right_value, value);
+}
+RC ArithmeticExpr::create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression * &res_expr,Table* default_table){
+      //这里需要对左右孩子递归进行，生成一个新的 ArithmeticExpr
+      //先解析left
+      //右表达式可能不存在
+      RC rc= RC::SUCCESS;
+      Expression *lhs = NULL;
+      Expression *rhs = NULL;
+      if((rc = left_->create_expression(table_map,tables,db,lhs,default_table)) != RC::SUCCESS)
+      {
+        return rc;
+      }
+      if(right_ && (rc = right_->create_expression(table_map,tables,db,rhs,default_table)) != RC::SUCCESS)
+      {
+        return rc;
+      }
+      assert(lhs != NULL);
+      ArithmeticExpr *tmp = new ArithmeticExpr(arithmetic_type(),lhs,rhs);
+      tmp->set_name(this->name());
+      res_expr = tmp;
+      return RC::SUCCESS;
+  }
+
+
+
+//检查表达式中出现的 表,列 是否存在
+RC FieldExpr::create_expression( const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table)
+{
+            assert(this->type() == ExprType::FIELD);
+            if(!common::is_blank(this->get_table_name().c_str()))//表名不为空
+            {
+              assert(this->get_field_name() != "*");
+              const char *table_name = this->get_table_name().c_str();
+              const char*field_name = this->get_field_name().c_str();
+              auto iter = table_map.find(table_name);
+              if (iter == table_map.end()) 
+              {
+                LOG_WARN("no such table in from list: %s", table_name);
+                return RC::SCHEMA_FIELD_MISSING;
+              }
+              Table *table = iter->second;
+              const FieldMeta *field_meta = table->table_meta().field(field_name);
+              if (nullptr == field_meta) 
+              {
+                LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
+                return RC::SCHEMA_FIELD_MISSING;
+              }
+              bool is_single_table = (tables.size() == 1);
+              FieldExpr *tmp = new FieldExpr(table, field_meta);
+              if(is_single_table)
+              {
+                std::string field_name(tmp->field_name());
+                tmp->set_name(field_name);
+              } 
+              else
+              {
+                std::string table_name(tmp->table_name());
+                std::string field_name(tmp->field_name());
+                tmp->set_name(table_name + "." + field_name);
+              }  
+              res_expr = tmp;
+            }
+            else  // 表名为空，只有列名
+            {
+              if (tables.size() != 1 && default_table == nullptr) {
+                LOG_WARN("invalid. I do not know the attr's table. attr=%s", this->get_field_name().c_str());
+                return RC::SCHEMA_FIELD_MISSING;
+              }
+
+              //Table *table = tables[0];
+              Table *table = nullptr;
+              if(!tables.empty())
+              {
+                table = tables[0];
+              }
+              if(default_table != nullptr)//提供了默认使用的表，就是使用默认表
+              {
+                table =default_table;
+              }
+              const FieldMeta *field_meta = table->table_meta().field(this->get_field_name().c_str());
+              if (nullptr == field_meta) {
+                LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), this->get_field_name().c_str());
+                return RC::SCHEMA_FIELD_MISSING;
+              }
+              FieldExpr *tmp = new FieldExpr(table, field_meta);
+              tmp->set_name(std::string(tmp->field_name()));
+              res_expr = tmp;
+            }
+            return RC::SUCCESS;
 }

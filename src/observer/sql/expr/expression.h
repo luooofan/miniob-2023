@@ -21,6 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/field/field.h"
 #include "sql/parser/value.h"
 #include "common/log/log.h"
+#include "storage/db/db.h"
 
 class Tuple;
 
@@ -88,6 +89,9 @@ public:
    */
   virtual AttrType value_type() const = 0;
 
+  virtual RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr) = 0;
+
   /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
    */
@@ -106,7 +110,11 @@ class FieldExpr : public Expression
 {
 public:
   FieldExpr() = default;
-  FieldExpr(const Table *table, const FieldMeta *field) : field_(table, field)
+  FieldExpr(const Table *table, const FieldMeta *field,std::string& table_name,std::string& field_name) : 
+  field_(table, field),table_name_(table_name),field_name_(field_name)
+  {}
+  FieldExpr(const Table *table, const FieldMeta *field) : 
+  field_(table, field)
   {}
   FieldExpr(const Field &field) : field_(field)
   {}
@@ -123,11 +131,23 @@ public:
   const char *table_name() const { return field_.table_name(); }
 
   const char *field_name() const { return field_.field_name(); }
+//在词法语法解析后，field_为空，只有table_name_ 和 field_name_，在create stmt 中先使用这两个变量，之后不会再使用
+  std::string & get_table_name(){return table_name_;}
+  std::string & get_field_name(){return field_name_;}
 
+
+  void set_table_name(std::string table_name){table_name_ = table_name;}
+  void set_field_name(std::string field_name){field_name_ = field_name;}
+  
   RC get_value(const Tuple &tuple, Value &value) const override;
+
+  RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr) override ;
 
 private:
   Field field_;
+  std::string table_name_;
+  std::string field_name_;
 };
 
 /**
@@ -152,7 +172,16 @@ public:
 
   void get_value(Value &value) const { value = value_; }
 
+  void set_value(Value &value) {value_ = value;}
   const Value &get_value() const { return value_; }
+
+  virtual RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr){
+      ValueExpr *tmp_expr = new ValueExpr(get_value());
+      tmp_expr->set_name(this->name());
+      res_expr = tmp_expr;
+      return RC::SUCCESS;
+    }
 
 private:
   Value value_;
@@ -179,7 +208,12 @@ public:
   AttrType value_type() const override { return cast_type_; }
 
   std::unique_ptr<Expression> &child() { return child_; }
-
+  virtual RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr){
+      CastExpr *tmp = new CastExpr(std::move(child_),cast_type_);
+      tmp->set_name(this->name());
+      return RC::SUCCESS;
+    }
 private:
   RC cast(const Value &value, Value &cast_value) const;
 
@@ -221,6 +255,11 @@ public:
    */
   RC compare_value(const Value &left, const Value &right, bool &value) const;
 
+  virtual RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr){
+      return RC::SUCCESS;
+    }
+
 private:
   CompOp comp_;
   std::unique_ptr<Expression> left_;
@@ -255,6 +294,10 @@ public:
 
   std::vector<std::unique_ptr<Expression>> &children() { return children_; }
 
+  virtual RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr){
+      return RC::SUCCESS;
+    }
 private:
   Type conjunction_type_;
   std::vector<std::unique_ptr<Expression>> children_;
@@ -291,6 +334,8 @@ public:
 
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
+  virtual RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr) override;
 
 private:
   RC calc_value(const Value &left_value, const Value &right_value, Value &value) const;
