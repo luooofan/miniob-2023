@@ -264,7 +264,7 @@ AttrType ArithmeticExpr::value_type() const
     return AttrType::INTS;
   }
 
-  return AttrType::FLOATS;
+  return AttrType::DOUBLES;
 }
 
 RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value, Value &value) const
@@ -282,7 +282,7 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
       if (target_type == AttrType::INTS) {
         value.set_int(left_value.get_int() + right_value.get_int());
       } else {
-        value.set_float(left_value.get_float() + right_value.get_float());
+        value.set_double(left_value.get_double() + right_value.get_double());
       }
     } break;
 
@@ -290,7 +290,7 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
       if (target_type == AttrType::INTS) {
         value.set_int(left_value.get_int() - right_value.get_int());
       } else {
-        value.set_float(left_value.get_float() - right_value.get_float());
+        value.set_double(left_value.get_double() - right_value.get_double());
       }
     } break;
 
@@ -298,7 +298,7 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
       if (target_type == AttrType::INTS) {
         value.set_int(left_value.get_int() * right_value.get_int());
       } else {
-        value.set_float(left_value.get_float() * right_value.get_float());
+        value.set_double(left_value.get_double() * right_value.get_double());
       }
     } break;
 
@@ -317,7 +317,7 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
           //value.set_float(numeric_limits<float>::max());
           value.set_null();
         } else {
-          value.set_float(left_value.get_float() / right_value.get_float());
+          value.set_double(left_value.get_double() / right_value.get_double());
         }
       }
     } break;
@@ -326,7 +326,7 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
       if (target_type == AttrType::INTS) {
         value.set_int(-left_value.get_int());
       } else {
-        value.set_float(-left_value.get_float());
+        value.set_double(-left_value.get_double());
       }
     } break;
 

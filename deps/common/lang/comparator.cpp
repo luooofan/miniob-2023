@@ -39,6 +39,19 @@ int compare_float(void *arg1, void *arg2)
   }
   return 0;
 }
+int compare_double(void *arg1, void *arg2)
+{
+  double v1 = *(double *)arg1;
+  double v2 = *(double *)arg2;
+  double cmp = v1 - v2;
+  if (cmp > EPSILON) {
+    return 1;
+  }
+  if (cmp < -EPSILON) {
+    return -1;
+  }
+  return 0;
+}
 
 int compare_string(void *arg1, int arg1_max_length, void *arg2, int arg2_max_length)
 {
