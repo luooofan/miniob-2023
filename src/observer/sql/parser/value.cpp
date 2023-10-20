@@ -20,7 +20,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "common/time/date.h"
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats", "dates", "nulls", "booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats","doubles", "dates", "nulls", "booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
@@ -48,7 +48,10 @@ Value::Value(float val)
 {
   set_float(val);
 }
-
+Value::Value(double val)
+{
+  set_double(val);
+}
 Value::Value(bool val)
 {
   set_boolean(val);
@@ -72,6 +75,10 @@ void Value::set_data(char *data, int length)
     } break;
     case FLOATS: {
       num_value_.float_value_ = *(float *)data;
+      length_ = length;
+    } break;
+    case DOUBLES:{
+      num_value_.double_value_ = *(double *)data;
       length_ = length;
     } break;
     case BOOLEANS: {
@@ -107,6 +114,12 @@ void Value::set_float(float val)
   num_value_.float_value_ = val;
   length_ = sizeof(val);
 }
+void Value::set_double(double val)
+{
+  attr_type_ = DOUBLES;
+  num_value_.double_value_ = val;
+  length_ = sizeof(val);
+}
 void Value::set_boolean(bool val)
 {
   attr_type_ = BOOLEANS;
@@ -136,6 +149,9 @@ void Value::set_value(const Value &value)
     } break;
     case FLOATS: {
       set_float(value.get_float());
+    } break;
+    case DOUBLES: {
+      set_double(value.get_double());
     } break;
     case CHARS: {
       set_string(value.get_string().c_str());
@@ -174,6 +190,9 @@ std::string Value::to_string() const
     case FLOATS: {
       os << common::double_to_str(num_value_.float_value_);
     } break;
+    case DOUBLES: {
+      os << common::double_to_str(num_value_.double_value_);
+    } break;
     case BOOLEANS: {
       os << num_value_.bool_value_;
     } break;
@@ -208,6 +227,9 @@ int Value::compare(const Value &other) const
       case FLOATS: {
         return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other.num_value_.float_value_);
       } break;
+      case DOUBLES: {
+        return common::compare_double((void *)&this->num_value_.double_value_, (void *)&other.num_value_.double_value_);
+      } break;
       case CHARS: {
         return common::compare_string((void *)this->str_value_.c_str(),
             this->str_value_.length(),
@@ -227,7 +249,19 @@ int Value::compare(const Value &other) const
   } else if (this->attr_type_ == FLOATS && other.attr_type_ == INTS) {
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
-  }
+  } else if (this->attr_type_ == INTS && other.attr_type_ == DOUBLES) {
+    double this_data = this->num_value_.int_value_;
+    return common::compare_double((void *)&this_data, (void *)&other.num_value_.double_value_);
+  } else if (this->attr_type_ == DOUBLES && other.attr_type_ == INTS) {
+    double other_data = other.num_value_.int_value_;
+    return common::compare_double((void *)&this->num_value_.double_value_, (void *)&other_data);
+  } else if (this->attr_type_ == FLOATS && other.attr_type_ == DOUBLES) {
+    float this_data = this->num_value_.float_value_;
+    return common::compare_double((void *)&this_data, (void *)&other.num_value_.double_value_);
+  } else if (this->attr_type_ == DOUBLES && other.attr_type_ == FLOATS) {
+    float other_data = other.num_value_.float_value_;
+    return common::compare_double((void *)&this->num_value_.double_value_, (void *)&other_data);
+  } 
   LOG_WARN("not supported");
   return -1;  // TODO return rc?
 }
@@ -249,6 +283,9 @@ int Value::get_int() const
     }
     case FLOATS: {
       return (int)(num_value_.float_value_);
+    }
+    case DOUBLES: {
+      return (int)(num_value_.double_value_);
     }
     case BOOLEANS: {
       return (int)(num_value_.bool_value_);
@@ -279,6 +316,9 @@ float Value::get_float() const
     case FLOATS: {
       return num_value_.float_value_;
     } break;
+    case DOUBLES:{
+      return float(num_value_.double_value_);
+    } break;
     case BOOLEANS: {
       return float(num_value_.bool_value_);
     } break;
@@ -289,6 +329,40 @@ float Value::get_float() const
   }
   return 0;
 }
+
+
+double Value::get_double() const
+{
+  ASSERT(attr_type_ != DATES,"date can not get_double()");
+  switch (attr_type_) {
+    case CHARS: {
+      try {
+        return std::stof(str_value_);
+      } catch (std::exception const &ex) {
+        LOG_TRACE("failed to convert string to float. s=%s, ex=%s", str_value_.c_str(), ex.what());
+        return 0.0;
+      }
+    } break;
+    case INTS: {
+      return double(num_value_.int_value_);
+    } break;
+    case FLOATS: {
+      return double(num_value_.float_value_);
+    } break;
+    case DOUBLES: {
+      return  num_value_.double_value_;
+    } break;
+    case BOOLEANS: {
+      return double(num_value_.bool_value_);
+    } break;
+    default: {
+      LOG_WARN("unknown data type. type=%d", attr_type_);
+      return 0;
+    }
+  }
+  return 0;
+}
+
 
 std::string Value::get_string() const
 {
@@ -322,6 +396,10 @@ bool Value::get_boolean() const
     } break;
     case FLOATS: {
       float val = num_value_.float_value_;
+      return val >= EPSILON || val <= -EPSILON;
+    } break;
+    case DOUBLES: {
+      double val = num_value_.double_value_;
       return val >= EPSILON || val <= -EPSILON;
     } break;
     case BOOLEANS: {

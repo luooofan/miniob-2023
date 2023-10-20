@@ -150,9 +150,9 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <insert_value_list>   insert_value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
-%type <rel_attr_list>       select_attr
+%type <expression_list>     select_attr
 %type <relation_list>       rel_list
-%type <rel_attr_list>       attr_list
+//%type <rel_attr_list>       attr_list
 %type <expression>          expression
 %type <expression_list>     expression_list
 %type <update_kv_list>      update_kv_list
@@ -429,14 +429,19 @@ insert_value_list:
     ;
 
 insert_value:
-    LBRACE value value_list RBRACE 
+    LBRACE expression value_list RBRACE 
     {
+      Value tmp;
+      if(!exp2value($2, tmp)) {
+        yyerror(&@$, sql_string, sql_result, scanner, "error");
+        YYERROR;
+      }
       if ($3 != nullptr) {
         $$ = $3;
       } else {
         $$ = new std::vector<Value>;
       }
-      $$->emplace_back(*$2);
+      $$->emplace_back(tmp);
       std::reverse($$->begin(), $$->end());
       delete $2;
     }
@@ -447,24 +452,29 @@ value_list:
     {
       $$ = nullptr;
     }
-    | COMMA value value_list  { 
+    | COMMA expression value_list  { 
+      Value tmp;
+      if(!exp2value($2,tmp)) {
+        yyerror(&@$, sql_string, sql_result, scanner, "error");
+        YYERROR;
+      }
       if ($3 != nullptr) {
         $$ = $3;
       } else {
         $$ = new std::vector<Value>;
       }
-      $$->emplace_back(*$2);
+      $$->emplace_back(tmp);
       delete $2;
     }
     ;
 value:
     NUMBER {
       $$ = new Value((int)$1);
-      // @$ = @1; // useless
+      @$ = @1; // useless
     }
     |FLOAT {
       $$ = new Value((float)$1);
-      // @$ = @1; // useless
+      @$ = @1; // useless
     }
     |DATE_STR {
       char *tmp = common::substr($1,1,strlen($1)-2);
@@ -545,14 +555,20 @@ update_kv_list:
       delete $2;
     }
     ;
+    
 update_kv:
-    ID EQ value
+    ID EQ expression
     {
       $$ = new UpdateKV;
       $$->attr_name = $1;
-      $$->value = *$3;
+      Value tmp;
+      if (!exp2value($3, tmp)) {
+        yyerror(&@$, sql_string, sql_result, scanner, "Exp Can Not As Value!");
+        YYERROR;
+      }
+      $$->value = tmp;
       free($1);
-      delete($3);
+      delete $3;
     }
     ;
 
@@ -561,7 +577,7 @@ select_stmt:        /*  select 语句的语法解析树*/
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
-        $$->selection.attributes.swap(*$2);
+        $$->selection.project_exprs.swap(*$2);
         delete $2;
       }
       if ($5 != nullptr) {
@@ -625,11 +641,12 @@ expression:
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
     }
     | value {
-      if ($1->is_null()) {
-        yyerror(&@$, sql_string, sql_result, scanner, "NULL Cound Not In Expression Now!");
-        YYERROR;
-      }
       $$ = new ValueExpr(*$1);
+      $$->set_name(token_name(sql_string, &@$));
+      delete $1;
+    }
+    | rel_attr {
+      $$ = new FieldExpr($1->relation_name, $1->attribute_name);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
@@ -637,20 +654,23 @@ expression:
 
 select_attr:
     '*' {
-      $$ = new std::vector<RelAttrSqlNode>;
-      RelAttrSqlNode attr;
-      attr.relation_name  = "";
-      attr.attribute_name = "*";
-      $$->emplace_back(attr);
+      $$ = new std::vector<Expression *>;
+      FieldExpr *expr = new FieldExpr("*", "*");
+      $$->emplace_back(expr);
     }
-    | rel_attr attr_list {
-      if ($2 != nullptr) {
-        $$ = $2;
-      } else {
-        $$ = new std::vector<RelAttrSqlNode>;
-      }
-      $$->emplace_back(*$1);
-      delete $1;
+    | '*' DOT '*' {
+      $$ = new std::vector<Expression *>;
+      FieldExpr *expr = new FieldExpr("*", "*");
+      $$->emplace_back(expr);
+    }
+    | ID DOT '*' {
+      $$ = new std::vector<Expression *>;
+      FieldExpr *expr = new FieldExpr($1, "*");
+      $$->emplace_back(expr);
+      free($1);
+    }
+    | expression_list {
+      $$ = $1;
     }
     ;
 
@@ -666,23 +686,6 @@ rel_attr:
       $$->attribute_name = $3;
       free($1);
       free($3);
-    }
-    ;
-
-attr_list:
-    /* empty */
-    {
-      $$ = nullptr;
-    }
-    | COMMA rel_attr attr_list {
-      if ($3 != nullptr) {
-        $$ = $3;
-      } else {
-        $$ = new std::vector<RelAttrSqlNode>;
-      }
-
-      $$->emplace_back(*$2);
-      delete $2;
     }
     ;
 
@@ -724,96 +727,35 @@ condition_list:
     }
     ;
 condition:
-    rel_attr comp_op value
+    expression comp_op expression
     {
       $$ = new ConditionSqlNode;
-      $$->left_is_attr = 1;
-      $$->left_attr = *$1;
-      $$->right_is_attr = 0;
-      $$->right_value = *$3;
+      $$->left_expr = $1;
+      $$->right_expr = $3;
       $$->comp = $2;
-
-      delete $1;
-      delete $3;
     }
-    | value comp_op value 
+    | expression IS NULL_T
     {
       $$ = new ConditionSqlNode;
-      $$->left_is_attr = 0;
-      $$->left_value = *$1;
-      $$->right_is_attr = 0;
-      $$->right_value = *$3;
-      $$->comp = $2;
-
-      delete $1;
-      delete $3;
+      $$->left_expr = $1;
+      $$->comp = IS_NULL;
+      ValueExpr *value_expr = new ValueExpr();
+      Value val;
+      val.set_null();
+      value_expr->set_value(val);
+      $$->right_expr = value_expr;
     }
-    | rel_attr comp_op rel_attr
+    | expression IS NOT NULL_T
     {
       $$ = new ConditionSqlNode;
-      $$->left_is_attr = 1;
-      $$->left_attr = *$1;
-      $$->right_is_attr = 1;
-      $$->right_attr = *$3;
-      $$->comp = $2;
-
-      delete $1;
-      delete $3;
-    }
-    | value comp_op rel_attr
-    {
-      $$ = new ConditionSqlNode;
-      $$->left_is_attr = 0;
-      $$->left_value = *$1;
-      $$->right_is_attr = 1;
-      $$->right_attr = *$3;
-      $$->comp = $2;
-
-      delete $1;
-      
-      delete $3;
-    }
-    | rel_attr IS NOT NULL_T
-    {
-      $$ = new ConditionSqlNode;
-      $$->left_is_attr = 1;
-      $$->left_attr = *$1;
-      $$->right_is_attr = 0;
-      $$->right_value.set_null();
-      $$->comp = CompOp::IS_NOT_NULL;
-      delete $1;
-    }
-    | rel_attr IS NULL_T
-    {
-      $$ = new ConditionSqlNode;
-      $$->left_is_attr = 1;
-      $$->left_attr = *$1;
-      $$->right_is_attr = 0;
-      $$->right_value.set_null();
-      $$->comp = CompOp::IS_NULL;
-      delete $1;
-    }
-    | value IS NOT NULL_T
-    {
-      $$ = new ConditionSqlNode;
-      $$->left_is_attr = 0;
-      $$->left_value = *$1;
-      $$->right_is_attr = 0;
-      $$->right_value.set_null();
-      $$->comp = CompOp::IS_NOT_NULL;
-      delete $1;
-    }
-    | value IS NULL_T
-    {
-      $$ = new ConditionSqlNode;
-      $$->left_is_attr = 0;
-      $$->left_value = *$1;
-      $$->right_is_attr = 0;
-      $$->right_value.set_null();
-      $$->comp = CompOp::IS_NULL;
-      delete $1;
-    }
-    ;
+      $$->left_expr = $1;
+      $$->comp = IS_NOT_NULL;
+      ValueExpr *value_expr = new ValueExpr();
+      Value val;
+      val.set_null();
+      value_expr->set_value(val);
+      $$->right_expr = value_expr;
+    };
 
 comp_op:
       EQ { $$ = EQUAL_TO; }

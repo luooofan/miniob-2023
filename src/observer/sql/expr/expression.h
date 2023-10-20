@@ -21,6 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/field/field.h"
 #include "sql/parser/value.h"
 #include "common/log/log.h"
+#include "storage/db/db.h"
 
 class Tuple;
 
@@ -89,6 +90,15 @@ public:
   virtual AttrType value_type() const = 0;
 
   /**
+   * @brief 检查 FieldExpr
+   * @details 在生成 SelectStmt 的时候调用
+   */
+  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) {
+      return RC::SUCCESS;
+    }
+
+  /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
    */
   virtual std::string name() const { return name_; }
@@ -106,10 +116,9 @@ class FieldExpr : public Expression
 {
 public:
   FieldExpr() = default;
-  FieldExpr(const Table *table, const FieldMeta *field) : field_(table, field)
-  {}
-  FieldExpr(const Field &field) : field_(field)
-  {}
+  FieldExpr(const std::string& table_name, const std::string& field_name) : table_name_(table_name), field_name_(field_name) {}
+  FieldExpr(const Table *table, const FieldMeta *field) : field_(table, field), table_name_(table->name()), field_name_(field->name()) {}
+  FieldExpr(const Field &field) : field_(field), table_name_(field.table_name()), field_name_(field.field_name()) {}
 
   virtual ~FieldExpr() = default;
 
@@ -124,10 +133,18 @@ public:
 
   const char *field_name() const { return field_.field_name(); }
 
+  const std::string & get_table_name() const { return table_name_; }
+  const std::string & get_field_name() const { return field_name_; }
+  
   RC get_value(const Tuple &tuple, Value &value) const override;
+
+  RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override;
 
 private:
   Field field_;
+  const std::string table_name_;
+  const std::string field_name_;
 };
 
 /**
@@ -152,8 +169,30 @@ public:
 
   void get_value(Value &value) const { value = value_; }
 
+  void set_value(Value &value) {value_ = value;}
   const Value &get_value() const { return value_; }
 
+  bool get_neg(Value &value)
+  {
+    switch (value_.attr_type())
+    {
+    case INTS:{
+        value.set_int(-1 * value_.get_int());
+        return true;
+    }break;
+    case FLOATS:{
+        value.set_float(-1 * value_.get_float());
+        return true;
+    }break;
+    case DOUBLES:{
+        value.set_double(-1 * value_.get_double());
+        return true;
+    }break;
+    default:
+      break;
+    }
+    return false;
+  }
 private:
   Value value_;
 };
@@ -179,6 +218,11 @@ public:
   AttrType value_type() const override { return cast_type_; }
 
   std::unique_ptr<Expression> &child() { return child_; }
+
+  RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
+      return child_->check_field(table_map, tables, db, default_table);
+    }
 
 private:
   RC cast(const Value &value, Value &cast_value) const;
@@ -221,6 +265,16 @@ public:
    */
   RC compare_value(const Value &left, const Value &right, bool &value) const;
 
+  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
+      if (RC rc = left_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
+        return rc;
+      } else if (rc = right_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
+        return rc;
+      }
+      return RC::SUCCESS;
+    }
+
 private:
   CompOp comp_;
   std::unique_ptr<Expression> left_;
@@ -255,6 +309,15 @@ public:
 
   std::vector<std::unique_ptr<Expression>> &children() { return children_; }
 
+  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
+      for (auto& expr : children_) {
+        if (RC rc = expr->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
+          return rc;
+        }
+      }
+      return RC::SUCCESS;
+    }
 private:
   Type conjunction_type_;
   std::vector<std::unique_ptr<Expression>> children_;
@@ -292,6 +355,21 @@ public:
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
 
+  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
+      RC rc = RC::SUCCESS;
+      if (rc = left_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
+        return rc;
+      }
+      if (arithmetic_type_ != Type::NEGATIVE) {
+        ASSERT(right_, "ERROR!");
+        if (rc = right_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
+          return rc;
+        }
+      }
+      return RC::SUCCESS;
+    }
+
 private:
   RC calc_value(const Value &left_value, const Value &right_value, Value &value) const;
   
@@ -300,3 +378,25 @@ private:
   std::unique_ptr<Expression> left_;
   std::unique_ptr<Expression> right_;
 };
+
+static bool exp2value(Expression * exp,Value & value)
+{
+  if(exp->type() == ExprType::VALUE) {
+    ValueExpr *tmp = static_cast<ValueExpr*>(exp);
+    value = tmp->get_value();
+    return true;
+  }
+  if(exp->type() == ExprType::ARITHMETIC) {
+    ArithmeticExpr * tmp = static_cast<ArithmeticExpr *>(exp);
+    if(tmp->arithmetic_type() != ArithmeticExpr::Type::NEGATIVE && tmp->left()->type() != ExprType::VALUE) {
+      return false;
+    }
+    ValueExpr *lhs = static_cast<ValueExpr*>(tmp->left().get());
+    if( ! lhs->get_neg(value) ) {
+      LOG_WARN("get_neg error!");
+      return false;
+    }
+    return true;
+  }
+  return false;
+}

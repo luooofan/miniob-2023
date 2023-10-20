@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include "storage/table/table.h"
 #include "sql/parser/value.h"
+#include "sql/expr/expression.h"
 
 using namespace common;
 
@@ -66,44 +67,92 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
   AttrType type_left = UNDEFINED;
   AttrType type_right = UNDEFINED;
 
-  if (1 == condition.left_is_attr) {
+  FieldExpr *field_expr = dynamic_cast<FieldExpr*>(condition.left_expr);
+  if(field_expr != nullptr)
+  {
     left.is_attr = true;
-    const FieldMeta *field_left = table_meta.field(condition.left_attr.attribute_name.c_str());
+    const FieldMeta *field_left = table_meta.field(field_expr->get_table_name().c_str());
     if (nullptr == field_left) {
-      LOG_WARN("No such field in condition. %s.%s", table.name(), condition.left_attr.attribute_name.c_str());
+      LOG_WARN("No such field in condition. %s.%s", table.name(), field_expr->get_table_name().c_str());
       return RC::SCHEMA_FIELD_MISSING;
     }
     left.attr_length = field_left->len();
     left.attr_offset = field_left->offset();
-
     type_left = field_left->type();
-  } else {
+  }
+  else
+  {
+    ValueExpr *value_expr = dynamic_cast<ValueExpr*>(condition.left_expr);
+    ASSERT(value_expr != nullptr,"left_expr is not a valueExpr");
     left.is_attr = false;
-    left.value = condition.left_value;  // 校验type 或者转换类型
-    type_left = condition.left_value.attr_type();
-
+    left.value = value_expr->get_value();
+    type_left = left.value.attr_type();
     left.attr_length = 0;
     left.attr_offset = 0;
   }
 
-  if (1 == condition.right_is_attr) {
+  FieldExpr *field_expr_right = dynamic_cast<FieldExpr*>(condition.right_expr);
+  if(field_expr_right != nullptr)
+  {
     right.is_attr = true;
-    const FieldMeta *field_right = table_meta.field(condition.right_attr.attribute_name.c_str());
+    const FieldMeta *field_right = table_meta.field(field_expr_right->get_table_name().c_str());
     if (nullptr == field_right) {
-      LOG_WARN("No such field in condition. %s.%s", table.name(), condition.right_attr.attribute_name.c_str());
+      LOG_WARN("No such field in condition. %s.%s", table.name(), field_expr_right->get_table_name().c_str());
       return RC::SCHEMA_FIELD_MISSING;
     }
     right.attr_length = field_right->len();
     right.attr_offset = field_right->offset();
     type_right = field_right->type();
-  } else {
+  }
+  else
+  {
+    ValueExpr *value_expr = dynamic_cast<ValueExpr*>(condition.right_expr);
+    ASSERT(value_expr != nullptr,"right_expr is not a valueExpr");
     right.is_attr = false;
-    right.value = condition.right_value;
-    type_right = condition.right_value.attr_type();
-
+    right.value = value_expr->get_value();
+    type_right = right.value.attr_type();
     right.attr_length = 0;
     right.attr_offset = 0;
   }
+
+  // if (1 == condition.left_is_attr) {
+  //   left.is_attr = true;
+  //   const FieldMeta *field_left = table_meta.field(condition.left_attr.attribute_name.c_str());
+  //   if (nullptr == field_left) {
+  //     LOG_WARN("No such field in condition. %s.%s", table.name(), condition.left_attr.attribute_name.c_str());
+  //     return RC::SCHEMA_FIELD_MISSING;
+  //   }
+  //   left.attr_length = field_left->len();
+  //   left.attr_offset = field_left->offset();
+
+  //   type_left = field_left->type();
+  // } else {
+  //   left.is_attr = false;
+  //   left.value = condition.left_value;  // 校验type 或者转换类型
+  //   type_left = condition.left_value.attr_type();
+
+  //   left.attr_length = 0;
+  //   left.attr_offset = 0;
+  // }
+
+  // if (1 == condition.right_is_attr) {
+  //   right.is_attr = true;
+  //   const FieldMeta *field_right = table_meta.field(condition.right_attr.attribute_name.c_str());
+  //   if (nullptr == field_right) {
+  //     LOG_WARN("No such field in condition. %s.%s", table.name(), condition.right_attr.attribute_name.c_str());
+  //     return RC::SCHEMA_FIELD_MISSING;
+  //   }
+  //   right.attr_length = field_right->len();
+  //   right.attr_offset = field_right->offset();
+  //   type_right = field_right->type();
+  // } else {
+  //   right.is_attr = false;
+  //   right.value = condition.right_value;
+  //   type_right = condition.right_value.attr_type();
+
+  //   right.attr_length = 0;
+  //   right.attr_offset = 0;
+  // }
 
   // 校验和转换
   //  if (!field_type_compare_compatible_table[type_left][type_right]) {

@@ -89,15 +89,8 @@ RC LogicalPlanGenerator::create_plan(
   unique_ptr<LogicalOperator> table_oper(nullptr);
 
   const std::vector<Table *> &tables = select_stmt->tables();
-  const std::vector<Field> &all_fields = select_stmt->query_fields();
   for (Table *table : tables) {
-    std::vector<Field> fields;
-    for (const Field &field : all_fields) {
-      if (0 == strcmp(field.table_name(), table->name())) {
-        fields.push_back(field);
-      }
-    }
-
+    std::vector<Field> fields; // TODO(wbj) 现在没用这个
     unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, fields, true/*readonly*/));
     if (table_oper == nullptr) {
       table_oper = std::move(table_get_oper);
@@ -116,7 +109,7 @@ RC LogicalPlanGenerator::create_plan(
     return rc;
   }
 
-  unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(all_fields));
+  unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(std::move(select_stmt->projects())));
   if (predicate_oper) {
     if (table_oper) {
       predicate_oper->add_child(std::move(table_oper));
@@ -137,19 +130,8 @@ RC LogicalPlanGenerator::create_plan(
 {
   std::vector<unique_ptr<Expression>> cmp_exprs;
   const std::vector<FilterUnit *> &filter_units = filter_stmt->filter_units();
-  for (const FilterUnit *filter_unit : filter_units) {
-    const FilterObj &filter_obj_left = filter_unit->left();
-    const FilterObj &filter_obj_right = filter_unit->right();
-
-    unique_ptr<Expression> left(filter_obj_left.is_attr
-                                         ? static_cast<Expression *>(new FieldExpr(filter_obj_left.field))
-                                         : static_cast<Expression *>(new ValueExpr(filter_obj_left.value)));
-
-    unique_ptr<Expression> right(filter_obj_right.is_attr
-                                          ? static_cast<Expression *>(new FieldExpr(filter_obj_right.field))
-                                          : static_cast<Expression *>(new ValueExpr(filter_obj_right.value)));
-
-    ComparisonExpr *cmp_expr = new ComparisonExpr(filter_unit->comp(), std::move(left), std::move(right));
+  for (FilterUnit *filter_unit : filter_units) {
+    ComparisonExpr *cmp_expr = new ComparisonExpr(filter_unit->comp(),  std::move(filter_unit->left()), std::move(filter_unit->right()));
     cmp_exprs.emplace_back(cmp_expr);
   }
 

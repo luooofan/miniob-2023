@@ -247,39 +247,34 @@ class ProjectTuple : public Tuple
 {
 public:
   ProjectTuple() = default;
-  virtual ~ProjectTuple()
-  {
-    for (TupleCellSpec *spec : speces_) {
-      delete spec;
-    }
-    speces_.clear();
-  }
+  virtual ~ProjectTuple() { exprs_.clear(); }
 
   void set_tuple(Tuple *tuple)
   {
     this->tuple_ = tuple;
   }
 
-  void add_cell_spec(TupleCellSpec *spec)
+  void add_expr(std::unique_ptr<Expression> expr)
   {
-    speces_.push_back(spec);
+    exprs_.emplace_back(std::move(expr));
   }
   int cell_num() const override
   {
-    return speces_.size();
+    return exprs_.size();
   }
 
   RC cell_at(int index, Value &cell) const override
   {
-    if (index < 0 || index >= static_cast<int>(speces_.size())) {
+    if (index < 0 || index >= static_cast<int>(exprs_.size())) {
       return RC::INTERNAL;
     }
     if (tuple_ == nullptr) {
       return RC::INTERNAL;
     }
 
-    const TupleCellSpec *spec = speces_[index];
-    return tuple_->find_cell(*spec, cell);
+    // 原本这里会根据 tuple cell spec 去 tuple_ 里 find cell
+    // 现在这个逻辑是在 FieldExpr 的 get_value 里面
+    return exprs_[index]->get_value(*tuple_, cell);
   }
 
   RC find_cell(const TupleCellSpec &spec, Value &cell) const override
@@ -287,6 +282,10 @@ public:
     return tuple_->find_cell(spec, cell);
   }
 
+  const std::vector<std::unique_ptr<Expression>>& expressions() const
+  {
+    return exprs_;
+  }
 #if 0
   RC cell_spec_at(int index, const TupleCellSpec *&spec) const override
   {
@@ -296,9 +295,11 @@ public:
     spec = speces_[index];
     return RC::SUCCESS;
   }
-#endif
 private:
   std::vector<TupleCellSpec *> speces_;
+#endif
+private:
+  std::vector<std::unique_ptr<Expression>> exprs_;
   Tuple *tuple_ = nullptr;
 };
 

@@ -27,6 +27,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/default/default_handler.h"
 #include "sql/executor/command_executor.h"
 #include "sql/operator/calc_physical_operator.h"
+#include "sql/operator/project_physical_operator.h"
 
 using namespace std;
 using namespace common;
@@ -66,15 +67,9 @@ RC ExecuteStage::handle_request_with_physical_operator(SQLStageEvent *sql_event)
   TupleSchema schema;
   switch (stmt->type()) {
     case StmtType::SELECT: {
-      SelectStmt *select_stmt = static_cast<SelectStmt *>(stmt);
-      bool with_table_name = select_stmt->tables().size() > 1;
-
-      for (const Field &field : select_stmt->query_fields()) {
-        if (with_table_name) {
-          schema.append_cell(field.table_name(), field.field_name());
-        } else {
-          schema.append_cell(field.field_name());
-        }
+      ProjectPhysicalOperator *project_operator = static_cast<ProjectPhysicalOperator *>(physical_operator.get());
+      for (const unique_ptr<Expression> & expr : project_operator->projections()) {
+        schema.append_cell(expr->name().c_str());
       }
     } break;
 

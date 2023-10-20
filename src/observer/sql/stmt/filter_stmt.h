@@ -24,25 +24,6 @@ class Db;
 class Table;
 class FieldMeta;
 
-struct FilterObj 
-{
-  bool is_attr;
-  Field field;
-  Value value;
-
-  void init_attr(const Field &field)
-  {
-    is_attr = true;
-    this->field = field;
-  }
-
-  void init_value(const Value &value)
-  {
-    is_attr = false;
-    this->value = value;
-  }
-};
-
 class FilterUnit 
 {
 public:
@@ -60,28 +41,37 @@ public:
     return comp_;
   }
 
-  void set_left(const FilterObj &obj)
+  void set_left(std::unique_ptr<Expression>&& left)
   {
-    left_ = obj;
+    left_ = std::move(left);
   }
-  void set_right(const FilterObj &obj)
+  void set_right(std::unique_ptr<Expression>&& right)
   {
-    right_ = obj;
+    right_ = std::move(right);
   }
 
-  const FilterObj &left() const
+  std::unique_ptr<Expression> &left()
   {
     return left_;
   }
-  const FilterObj &right() const
+  std::unique_ptr<Expression> &right()
+  {
+    return right_;
+  }
+
+  const std::unique_ptr<Expression> &left() const
+  {
+    return left_;
+  }
+  const std::unique_ptr<Expression> &right() const
   {
     return right_;
   }
 
 private:
   CompOp comp_ = NO_OP;
-  FilterObj left_;
-  FilterObj right_;
+  std::unique_ptr<Expression> left_;
+  std::unique_ptr<Expression> right_;
 };
 
 /**

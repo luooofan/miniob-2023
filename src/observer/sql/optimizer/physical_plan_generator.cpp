@@ -88,7 +88,7 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
 
 RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, unique_ptr<PhysicalOperator> &oper)
 {
-  vector<unique_ptr<Expression>> &predicates = table_get_oper.predicates();
+  vector<unique_ptr<Expression>> &predicates = table_get_oper.predicates();//谓词下推这里才会有内容
   // 看看是否有可以用于索引查找的表达式
   Table *table = table_get_oper.table();
 
@@ -193,12 +193,8 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
     }
   }
 
-  ProjectPhysicalOperator *project_operator = new ProjectPhysicalOperator;
-  const vector<Field> &project_fields = project_oper.fields();
-  for (const Field &field : project_fields) {
-    project_operator->add_projection(field.table(), field.meta());
-  }
-
+  ProjectPhysicalOperator *project_operator = new ProjectPhysicalOperator();
+  project_operator->add_projections(std::move(project_oper.projects()));
   if (child_phy_oper) {
     project_operator->add_child(std::move(child_phy_oper));
   }

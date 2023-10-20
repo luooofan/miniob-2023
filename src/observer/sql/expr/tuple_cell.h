@@ -23,7 +23,8 @@ class TupleCellSpec
 public:
   TupleCellSpec(const char *table_name, const char *field_name, const char *alias = nullptr);
   TupleCellSpec(const char *alias);
-
+  TupleCellSpec(Expression *expr) : expression_(expr)
+  {}
   const char *table_name() const
   {
     return table_name_.c_str();
@@ -36,9 +37,13 @@ public:
   {
     return alias_.c_str();
   }
-
+  Expression *expression() const
+  {
+    return expression_;
+  }
 private:
   std::string table_name_;
   std::string field_name_;
   std::string alias_;
+  Expression *expression_ = nullptr;
 };

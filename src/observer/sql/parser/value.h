@@ -26,6 +26,7 @@ enum AttrType
   CHARS,          ///< 字符串类型
   INTS,           ///< 整数类型(4字节)
   FLOATS,         ///< 浮点数类型(4字节)
+  DOUBLES,        
   DATES,          ///< 日期类型
   NULLS,          ///< null类型
   BOOLEANS,       ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
@@ -52,6 +53,7 @@ public:
 
   explicit Value(int val);
   explicit Value(float val);
+  explicit Value(double val);
   explicit Value(bool val);
   explicit Value(const char *s, int len = 0);
 
@@ -79,11 +81,11 @@ public:
   }
   void set_int(int val);
   void set_float(float val);
+  void set_double(double val);
   void set_date(int val);
   void set_boolean(bool val);
   void set_string(const char *s, int len = 0);
   void set_value(const Value &value);
-
   std::string to_string() const;
 
   int compare(const Value &other) const;
@@ -98,7 +100,21 @@ public:
   {
     return attr_type_;
   }
-
+  bool is_minus() const
+  {
+    if(attr_type_ == INTS )
+    {
+      return num_value_.int_value_ < 0;
+    }
+    else if(attr_type_ == FLOATS)
+    {
+      return num_value_.float_value_ < 0;
+    }
+    else
+    {
+      return false;
+    }
+  }
 public:
   /**
    * 获取对应的值
@@ -109,6 +125,8 @@ public:
   float get_float() const;
   std::string get_string() const;
   bool get_boolean() const;
+  double get_double() const;
+
 
 private:
   AttrType attr_type_ = UNDEFINED;
@@ -118,6 +136,7 @@ private:
     int int_value_;
     float float_value_;
     bool bool_value_;
+    double double_value_;
   } num_value_;
   std::string str_value_;
 };
