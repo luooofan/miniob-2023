@@ -425,14 +425,20 @@ insert_value_list:
     ;
 
 insert_value:
-    LBRACE value value_list RBRACE 
+    LBRACE expression value_list RBRACE 
     {
+      Value tmp;
+      if(!exp2value($2,tmp))
+      {
+        yyerror(&@$, sql_string, sql_result, scanner, "error");
+        YYERROR;
+      }
       if ($3 != nullptr) {
         $$ = $3;
       } else {
         $$ = new std::vector<Value>;
       }
-      $$->emplace_back(*$2);
+      $$->emplace_back(tmp);
       std::reverse($$->begin(), $$->end());
       delete $2;
     }
@@ -443,13 +449,19 @@ value_list:
     {
       $$ = nullptr;
     }
-    | COMMA value value_list  { 
+    | COMMA expression value_list  { 
+      Value tmp;
+      if(!exp2value($2,tmp))
+      {
+        yyerror(&@$, sql_string, sql_result, scanner, "error");
+        YYERROR;
+      }
       if ($3 != nullptr) {
         $$ = $3;
       } else {
         $$ = new std::vector<Value>;
       }
-      $$->emplace_back(*$2);
+      $$->emplace_back(tmp);
       delete $2;
     }
     ;
@@ -503,12 +515,18 @@ delete_stmt:    /*  delete 语句的语法解析树*/
     }
     ;
 update_stmt:      /*  update 语句的语法解析树*/
-    UPDATE ID SET ID EQ value where 
+    UPDATE ID SET ID EQ expression where 
     {
       $$ = new ParsedSqlNode(SCF_UPDATE);
       $$->update.relation_name = $2;
       $$->update.attribute_name = $4;
-      $$->update.value = *$6;
+      Value tmp;
+      if(!exp2value($6,tmp))
+      {
+        yyerror(&@$, sql_string, sql_result, scanner, "error");
+        YYERROR;
+      }
+      $$->update.value = tmp;
       if ($7 != nullptr) {
         $$->update.conditions.swap(*$7);
         delete $7;
@@ -591,17 +609,17 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
-    | expression value{
-      if(!$2->is_minus())
-      {
-        yyerror(&@$, sql_string, sql_result, scanner, "error");
-        YYERROR;
-      }
+    // | expression value{
+    //   if(!$2->is_minus())
+    //   {
+    //     yyerror(&@$, sql_string, sql_result, scanner, "error");
+    //     YYERROR;
+    //   }
       
-      ValueExpr *val = new ValueExpr(*$2);
-      $$ = create_arithmetic_expression(ArithmeticExpr::Type::ADD, $1, val, sql_string, &@$);
-      delete $2;
-    }
+    //   ValueExpr *val = new ValueExpr(*$2);
+    //   $$ = create_arithmetic_expression(ArithmeticExpr::Type::ADD, $1, val, sql_string, &@$);
+    //   delete $2;
+    // }
     |rel_attr {
       FieldExpr *tmp = new FieldExpr();
       tmp->set_table_name($1->relation_name);

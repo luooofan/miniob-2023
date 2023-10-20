@@ -182,7 +182,27 @@ public:
       res_expr = tmp_expr;
       return RC::SUCCESS;
     }
-
+  bool get_neg(Value &value)
+  {
+    switch (value_.attr_type())
+    {
+    case INTS:{
+        value.set_int(-1 * value_.get_int());
+        return true;
+    }break;
+    case FLOATS:{
+        value.set_float(-1 * value_.get_float());
+        return true;
+    }break;
+    case DOUBLES:{
+        value.set_double(-1 * value_.get_double());
+        return true;
+    }break;
+    default:
+      break;
+    }
+    return false;
+  }
 private:
   Value value_;
 };
@@ -345,3 +365,29 @@ private:
   std::unique_ptr<Expression> left_;
   std::unique_ptr<Expression> right_;
 };
+
+static bool exp2value(Expression * exp,Value & value)
+{
+  if(exp->type() == ExprType::VALUE)
+  {
+    ValueExpr *tmp = static_cast<ValueExpr*>(exp);
+    value = tmp->get_value();
+    return true;
+  }
+  if(exp->type() == ExprType::ARITHMETIC)
+  {
+    ArithmeticExpr * tmp = static_cast<ArithmeticExpr *>(exp);
+    if(tmp->arithmetic_type() != ArithmeticExpr::Type::NEGATIVE && tmp->left()->type() != ExprType::VALUE)
+    {
+      return false;
+    }
+    ValueExpr *lhs = static_cast<ValueExpr*>(tmp->left().get());
+    if( ! lhs->get_neg(value) )
+    {
+      LOG_WARN("get_neg error!");
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
