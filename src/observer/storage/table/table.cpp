@@ -654,7 +654,7 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
       break;
     }
     if (field_length < 0 || field_offset < 0) {
-      LOG_WARN("field not find ,field name = %s", attr_name);
+      LOG_WARN("field not find ,field name = %s", attr_name.c_str());
       return RC::SCHEMA_FIELD_NOT_EXIST;
     }
 
@@ -699,7 +699,7 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
     return rc;
   }
 
-  delete data;
+  delete[] data;
   record.set_data(old_data);
   return rc;
 }

@@ -99,6 +99,14 @@ public:
     }
 
   /**
+   * @brief 检查是否能下推
+   * @details 在生成 SelectStmt 的时候调用，如果当前表达式树中存在一个 FieldExpr 的 table name 不在 table_map 中就返回 false
+   */
+  virtual bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) {
+    return true;
+  }
+
+  /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
    */
   virtual std::string name() const { return name_; }
@@ -141,6 +149,9 @@ public:
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
     const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override;
 
+  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
+    return table_map.count(table_name_) != 0;
+  }
 private:
   Field field_;
   const std::string table_name_;
@@ -223,6 +234,9 @@ public:
     const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
       return child_->check_field(table_map, tables, db, default_table);
     }
+  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
+    return child_->check_can_push_down(table_map);
+  }
 
 private:
   RC cast(const Value &value, Value &cast_value) const;
@@ -275,6 +289,10 @@ public:
       return RC::SUCCESS;
     }
 
+  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
+    return left_->check_can_push_down(table_map) && right_->check_can_push_down(table_map);
+  }
+
 private:
   CompOp comp_;
   std::unique_ptr<Expression> left_;
@@ -296,7 +314,7 @@ public:
   };
 
 public:
-  ConjunctionExpr(Type type, std::vector<std::unique_ptr<Expression>> &children);
+  ConjunctionExpr(Type type, std::vector<std::unique_ptr<Expression>> children);
   virtual ~ConjunctionExpr() = default;
 
   ExprType type() const override { return ExprType::CONJUNCTION; }
@@ -318,6 +336,16 @@ public:
       }
       return RC::SUCCESS;
     }
+
+  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
+    for (auto& expr : children_) {
+      if (!expr->check_can_push_down(table_map)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
 private:
   Type conjunction_type_;
   std::vector<std::unique_ptr<Expression>> children_;
@@ -369,6 +397,17 @@ public:
       }
       return RC::SUCCESS;
     }
+
+  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
+    if (!left_->check_can_push_down(table_map)) {
+      return false;
+    }
+    if (arithmetic_type_ != Type::NEGATIVE) {
+      ASSERT(right_, "ERROR!");
+      return right_->check_can_push_down(table_map);
+    }
+    return true;
+  }
 
 private:
   RC calc_value(const Value &left_value, const Value &right_value, Value &value) const;
