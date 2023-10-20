@@ -72,7 +72,7 @@ RC UpdatePhysicalOperator::next()
       // 更新失败，需要回滚之前成功的record
       LOG_WARN("failed to update record: %s", strrc(rc));
       // old_records中最后一条记录是刚才更新失败的，不需要回滚
-      for (size_t i = old_records_.size() - 2; i >= 0; i--) {
+      for (int i = old_records_.size() - 2; i >= 0; i--) {
         RC rc2 = RC::SUCCESS;
         Record updated_record;
         std::vector<Value*> old_row_values;

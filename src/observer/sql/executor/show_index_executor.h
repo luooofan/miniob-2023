@@ -56,7 +56,7 @@ public:
           oper->append({table->name(),                      // Table
                         indexes[i]->index_meta().unique() ? "0" :"1",  // Unique
                         indexes[i]->index_meta().name(),    // Key_name
-                        to_string(j-1),                     // Seq_in_index
+                        to_string(j),                     // Seq_in_index
                         indexes[i]->index_meta().field().at(j)}); // Column_name
         }
       }

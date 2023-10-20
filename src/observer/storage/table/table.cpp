@@ -28,6 +28,8 @@ See the Mulan PSL v2 for more details. */
 #include "storage/index/index.h"
 #include "storage/index/bplus_tree_index.h"
 #include "storage/trx/trx.h"
+#include "event/sql_debug.h"
+#include "common/lang/defer.h"
 
 Table::~Table()
 {
@@ -160,7 +162,7 @@ RC Table::open(const char *meta_file, const char *base_dir)
         LOG_ERROR("Found invalid index meta info which has a non-exists field. table=%s, index=%s, field=%s",
             name(),
             index_meta->name(),
-            index_meta->field());
+            index_meta->field().data());
         // skip cleanup
         //  do all cleanup action in destructive Table function
         return RC::INTERNAL;
@@ -222,7 +224,6 @@ RC Table::insert_records(std::vector<Record> &records)
   RC rc = RC::SUCCESS;
 
   // 回滚前 num 个插入
-  // TODO 没有考虑键值重复的情况
   auto rollback = [this, &records](int num) {
     for (int i = 0; i < num; ++i) {
       Record& record = records[i];
@@ -262,6 +263,7 @@ RC Table::insert_records(std::vector<Record> &records)
             strrc(rc2));
       }
       rollback(idx);
+      break;
     }
     ++idx;
   }
@@ -570,8 +572,9 @@ RC Table::insert_entry_of_indexes(const char *record, const RID &rid)
     if (rc != RC::SUCCESS) {
       RC rc2 = RC::SUCCESS;
       for (size_t j = 0; j < i; j++) {
-        rc2 = index->delete_entry(record, &rid);
+        rc2 = indexes_[j]->delete_entry(record, &rid);
         if (RC::SUCCESS != rc2) {
+          sql_debug("Delete index failed after insert index failed. rc=%s", strrc(rc2));
           LOG_ERROR("rollback index [%d] failed after insert index failed", j);
           break;
         }
@@ -588,6 +591,7 @@ RC Table::delete_entry_of_indexes(const char *record, const RID &rid, bool error
   for (Index *index : indexes_) {
     rc = index->delete_entry(record, &rid);
     if (rc != RC::SUCCESS) {
+      sql_debug("delete index failed, rc=%s", strrc(rc));
       if (rc != RC::RECORD_INVALID_KEY || !error_on_not_exists) {
         break;
       }
@@ -664,6 +668,12 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
 
   char *old_data = record.data();                        // old_data不能释放，其指向的是frame中的内存
   char *data     = new char[table_meta_.record_size()];  // new_record->data
+  DEFER([&](){
+    delete [] data;
+    data = nullptr;
+    record.set_data(old_data);
+  });
+
   memcpy(data, old_data, table_meta_.record_size());
 
   for (size_t c_idx = 0; c_idx < attr_names.size(); c_idx++) {
@@ -723,25 +733,16 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
     return rc;
   }
 
-  // 应该先删除旧索引，然后插入新索引，最后原地更新数据
-  
-  rc = delete_entry_of_indexes(old_data, record.rid(), false);
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
-        record.rid().page_num,
-        record.rid().slot_num,
-        rc,
-        strrc(rc));
-  }
-
   rc = insert_entry_of_indexes(record.data(), record.rid());
   if (rc != RC::SUCCESS) {  // 可能出现了键值重复
-    RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
+    RC rc2 = insert_entry_of_indexes(old_data, record.rid());
     if (rc2 != RC::SUCCESS) {
+      sql_debug("Failed to rollback index after insert index failed, rc=%s", strrc(rc2));
       LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
           name(),
           rc2,
           strrc(rc2));
+      return rc2;
     }
     return rc;  // 插入新的索引失败
   }
@@ -753,7 +754,6 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
     return rc;
   }
 
-  delete[] data;
   record.set_data(old_data);
   return rc;
 }
