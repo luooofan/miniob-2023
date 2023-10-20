@@ -384,94 +384,45 @@ RC ArithmeticExpr::try_get_value(Value &value) const
 
   return calc_value(left_value, right_value, value);
 }
-RC ArithmeticExpr::create_expression(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db,Expression * &res_expr,Table* default_table){
-      //这里需要对左右孩子递归进行，生成一个新的 ArithmeticExpr
-      //先解析left
-      //右表达式可能不存在
-      RC rc= RC::SUCCESS;
-      Expression *lhs = NULL;
-      Expression *rhs = NULL;
-      if((rc = left_->create_expression(table_map,tables,db,lhs,default_table)) != RC::SUCCESS)
-      {
-        return rc;
-      }
-      if(right_ && (rc = right_->create_expression(table_map,tables,db,rhs,default_table)) != RC::SUCCESS)
-      {
-        return rc;
-      }
-      assert(lhs != NULL);
-      ArithmeticExpr *tmp = new ArithmeticExpr(arithmetic_type(),lhs,rhs);
-      tmp->set_name(this->name());
-      res_expr = tmp;
-      return RC::SUCCESS;
-  }
-
-
 
 //检查表达式中出现的 表,列 是否存在
-RC FieldExpr::create_expression( const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table)
+RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table)
 {
-            assert(this->type() == ExprType::FIELD);
-            if(!common::is_blank(this->get_table_name().c_str()))//表名不为空
-            {
-              assert(this->get_field_name() != "*");
-              const char *table_name = this->get_table_name().c_str();
-              const char*field_name = this->get_field_name().c_str();
-              auto iter = table_map.find(table_name);
-              if (iter == table_map.end()) 
-              {
-                LOG_WARN("no such table in from list: %s", table_name);
-                return RC::SCHEMA_FIELD_MISSING;
-              }
-              Table *table = iter->second;
-              const FieldMeta *field_meta = table->table_meta().field(field_name);
-              if (nullptr == field_meta) 
-              {
-                LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
-                return RC::SCHEMA_FIELD_MISSING;
-              }
-              bool is_single_table = (tables.size() == 1);
-              FieldExpr *tmp = new FieldExpr(table, field_meta);
-              if(is_single_table)
-              {
-                std::string field_name(tmp->field_name());
-                tmp->set_name(field_name);
-              } 
-              else
-              {
-                std::string table_name(tmp->table_name());
-                std::string field_name(tmp->field_name());
-                tmp->set_name(table_name + "." + field_name);
-              }  
-              res_expr = tmp;
-            }
-            else  // 表名为空，只有列名
-            {
-              if (tables.size() != 1 && default_table == nullptr) {
-                LOG_WARN("invalid. I do not know the attr's table. attr=%s", this->get_field_name().c_str());
-                return RC::SCHEMA_FIELD_MISSING;
-              }
-
-              //Table *table = tables[0];
-              Table *table = nullptr;
-              if(!tables.empty())
-              {
-                table = tables[0];
-              }
-              if(default_table != nullptr)//提供了默认使用的表，就是使用默认表
-              {
-                table =default_table;
-              }
-              const FieldMeta *field_meta = table->table_meta().field(this->get_field_name().c_str());
-              if (nullptr == field_meta) {
-                LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), this->get_field_name().c_str());
-                return RC::SCHEMA_FIELD_MISSING;
-              }
-              FieldExpr *tmp = new FieldExpr(table, field_meta);
-              tmp->set_name(std::string(tmp->field_name()));
-              res_expr = tmp;
-            }
-            return RC::SUCCESS;
+  ASSERT(field_name_ != "*", "ERROR!");
+  const char* table_name = table_name_.c_str();
+  const char* field_name = field_name_.c_str();
+  Table * table = nullptr;
+  if(!common::is_blank(table_name)) { //表名不为空
+    // check table
+    auto iter = table_map.find(table_name);
+    if (iter == table_map.end()) {
+      LOG_WARN("no such table in from list: %s", table_name);
+      return RC::SCHEMA_FIELD_MISSING;
+    }
+    table = iter->second;
+  } else { // 表名为空，只有列名
+    if (tables.size() != 1 && default_table == nullptr) {
+      LOG_WARN("invalid. I do not know the attr's table. attr=%s", this->get_field_name().c_str());
+      return RC::SCHEMA_FIELD_MISSING;
+    }
+    table = default_table ? default_table : tables[0];
+  }
+  ASSERT(nullptr != table, "ERROR!");
+  // check field
+  const FieldMeta *field_meta = table->table_meta().field(field_name);
+  if (nullptr == field_meta) {
+    LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
+    return RC::SCHEMA_FIELD_MISSING;
+  }
+  // set field_
+  field_ = Field(table, field_meta);
+  // set name
+  bool is_single_table = (tables.size() == 1);
+  if(is_single_table) {
+    set_name(field_name_);
+  } else {
+    set_name(table_name_ + "." + field_name_);
+  }  
+  return RC::SUCCESS;
 }

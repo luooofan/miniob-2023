@@ -32,7 +32,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/calc_stmt.h"
 #include "sql/stmt/update_stmt.h"
 
-RC Stmt::create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt,SQLStageEvent *sql_event)
+RC Stmt::create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt)
 {
   stmt = nullptr;
 
@@ -44,7 +44,7 @@ RC Stmt::create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt,SQLStageEvent 
       return DeleteStmt::create(db, sql_node.deletion, stmt);
     }
     case SCF_SELECT: {
-      return SelectStmt::create(db, sql_node.selection, stmt,sql_event);
+      return SelectStmt::create(db, sql_node.selection, stmt);
     }
 
     case SCF_EXPLAIN: {

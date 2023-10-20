@@ -50,34 +50,6 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
   return rc;
 }
 
-RC get_table_and_field(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-    const RelAttrSqlNode &attr, Table *&table, const FieldMeta *&field)
-{
-  if (common::is_blank(attr.relation_name.c_str())) {
-    table = default_table;//使用默认的表
-  } else if (nullptr != tables) {
-    auto iter = tables->find(attr.relation_name);
-    if (iter != tables->end()) {
-      table = iter->second;
-    }
-  } else {
-    table = db->find_table(attr.relation_name.c_str());
-  }
-  if (nullptr == table) {
-    LOG_WARN("No such table: attr.relation_name: %s", attr.relation_name.c_str());
-    return RC::SCHEMA_TABLE_NOT_EXIST;
-  }
-
-  field = table->table_meta().field(attr.attribute_name.c_str());
-  if (nullptr == field) {
-    LOG_WARN("no such field in table: table %s, field %s", table->name(), attr.attribute_name.c_str());
-    table = nullptr;
-    return RC::SCHEMA_FIELD_NOT_EXIST;
-  }
-
-  return RC::SUCCESS;
-}
-
 RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
     const ConditionSqlNode &condition, FilterUnit *&filter_unit)
 {
@@ -89,37 +61,30 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     return RC::INVALID_ARGUMENT;
   }
 
-  filter_unit = new FilterUnit;//filterUnit 左右应该都是表达式
+  filter_unit = new FilterUnit; //filterUnit 左右应该都是表达式
   DEFER([&](){
     if (RC::SUCCESS != rc && nullptr != filter_unit) {
       delete filter_unit;
       filter_unit = nullptr;
     }
   });
-  //构造新的左 右孩子表达式
-  Expression * left = nullptr;
-  const std::vector<Table *>table_arr;
-  rc = condition.left_expr->create_expression(*tables,table_arr,db,left,default_table);
-  if(rc != RC::SUCCESS )
-  {
-    LOG_WARN("filter_stmt create lhs expression error");
-    return rc;
-  }
-  Expression * right = nullptr;
-  rc = condition.right_expr->create_expression(*tables,table_arr,db,right,default_table);
-  if(rc != RC::SUCCESS)
-  {
-    LOG_WARN("filter_stmt create rhs expression error");
-    return rc;
-  }
-  ASSERT(left!= nullptr,"filter_stmt create lhs expression error");
-  ASSERT(right!= nullptr,"filter_stmt create rhs expression error");
-  FilterObj left_filter_obj,right_filter_obj;
-  left_filter_obj.expr = left;
-  right_filter_obj.expr = right;
 
-  filter_unit->set_left(left_filter_obj);
-  filter_unit->set_right(right_filter_obj);
+  const std::vector<Table *> table_arr; // 因为条件表达式里的 FieldExpr 一定是 t1.c1 所以传入个空的 table vector 就行
+  rc = condition.left_expr->check_field(*tables, table_arr, db, default_table);
+  if(rc != RC::SUCCESS ) {
+    LOG_WARN("filter_stmt check_field lhs expression error");
+    return rc;
+  }
+  rc = condition.right_expr->check_field(*tables, table_arr, db, default_table);
+  if(rc != RC::SUCCESS) {
+    LOG_WARN("filter_stmt check_field rhs expression error");
+    return rc;
+  }
+
+  filter_unit->set_left(std::unique_ptr<Expression>(condition.left_expr));
+  // condition.left_expr = nullptr;
+  filter_unit->set_right(std::unique_ptr<Expression>(condition.right_expr));
+  // condition.right_expr = nullptr;
   filter_unit->set_comp(comp);
   // 检查两个类型是否能够比较
   return rc;
