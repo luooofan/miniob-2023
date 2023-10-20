@@ -28,7 +28,7 @@ class UpdateStmt : public Stmt
 {
 public:
   UpdateStmt() = default;
-  UpdateStmt(Table *table, const Value *values, int value_amount,FieldMeta field,FilterStmt *filter_stmt);
+  UpdateStmt(Table *table, std::vector<FieldMeta> fields, std::vector<Value*> values, FilterStmt *filter_stmt);
   ~UpdateStmt() override;
 public:
   static RC create(Db *db, const UpdateSqlNode &update_sql, Stmt *&stmt);
@@ -38,30 +38,29 @@ public:
   {
     return table_;
   }
-  const Value *values() const
+  std::vector<Value*> &values()
   {
     return values_;
   }
   int value_amount() const
   {
-    return value_amount_;
+    return fields_.size();
   }
   StmtType type() const override
   {
     return StmtType::UPDATE;
   }
-  std::vector<FieldMeta>* update_fields()
+  std::vector<FieldMeta> &update_fields()
   {
-    return &fields_;
+    return fields_;
   }
-  FilterStmt * filter_stmt()
+  FilterStmt *filter_stmt()
   {
     return filter_stmt_;
   }
 private:
   Table *table_ = nullptr;
-  const Value *values_ = nullptr;
-  int value_amount_ = 0;
-  std::vector<FieldMeta> fields_;//将被更新的列
+  std::vector<Value*> values_;             // 列的新值
+  std::vector<FieldMeta> fields_;  // 将被更新的列
   FilterStmt *filter_stmt_ = nullptr;
 };
