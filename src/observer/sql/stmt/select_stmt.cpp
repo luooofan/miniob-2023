@@ -89,13 +89,8 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   }
 
   auto cond_is_ok = [&local_table_map](const ConditionSqlNode& node) {
-    if (node.left_is_attr && local_table_map.count(node.left_attr.relation_name) == 0)  {
-      return false;
-    }
-    if (node.right_is_attr && local_table_map.count(node.right_attr.relation_name) == 0)  {
-      return false;
-    }
-    return true;
+    return node.left_expr->check_can_push_down(local_table_map) 
+            && node.right_expr->check_can_push_down(local_table_map);
   };
 
   auto pick_conditions = [&cond_is_ok, &all_conditions]() {
