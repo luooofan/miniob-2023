@@ -551,6 +551,8 @@ update_kv:
       $$ = new UpdateKV;
       $$->attr_name = $1;
       $$->value = *$3;
+      free($1);
+      delete($3);
     }
     ;
 

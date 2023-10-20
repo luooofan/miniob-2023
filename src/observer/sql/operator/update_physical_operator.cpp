@@ -60,14 +60,14 @@ RC UpdatePhysicalOperator::next()
     RC rc2 = RC::SUCCESS;
     if (RC::SUCCESS != (rc2 = extract_old_value(record))) {
       if (RC::RECORD_DUPLICATE_KEY == rc2) { 
-        return rc; 
+        continue;
       } else { 
         return rc2; 
       }
     }
 
     // 接口内部只保证当前record更新的原子性
-    table_->update_record(record, fields_, values_);    //这里暂时没管事务，之后需要修改
+    rc = table_->update_record(record, fields_, values_);    //这里暂时没管事务，之后需要修改
     if (rc != RC::SUCCESS) {
       // 更新失败，需要回滚之前成功的record
       LOG_WARN("failed to update record: %s", strrc(rc));
@@ -76,7 +76,7 @@ RC UpdatePhysicalOperator::next()
         RC rc2 = RC::SUCCESS;
         Record updated_record;
         std::vector<Value*> old_row_values;
-        for (size_t j = 0; j < old_values_.size(); j++) {
+        for (size_t j = 0; j < old_values_[i].size(); j++) {
           old_row_values.emplace_back(&old_values_[i][j]);
         }
         if (RC::SUCCESS != (rc2 = table_->get_record(old_records_[i], updated_record))) {
@@ -156,7 +156,7 @@ RC UpdatePhysicalOperator::extract_old_value(Record &record)
     LOG_WARN("update old value equals new value, skip this record");
     return RC::RECORD_DUPLICATE_KEY;
   }
-  old_values_.emplace_back(old_value);
+  old_values_.emplace_back(std::move(old_value));
   old_records_.emplace_back(record.rid());
   return rc;
 }

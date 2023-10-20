@@ -604,7 +604,7 @@ RC Table::update_record(Record &record, const char *attr_name, Value *value)
   return update_record(record, attr_names, values);
 }
 
-RC Table::update_record(Record &record, std::vector<std::string> attr_names, std::vector<Value*> values)
+RC Table::update_record(Record &record, const std::vector<std::string> &attr_names, const std::vector<Value*> &values)
 {
   RC rc = RC::SUCCESS;
   if (attr_names.size() != values.size() || 0 == attr_names.size()) {
@@ -616,7 +616,6 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
   int       field_offset   = -1;
   int       field_length   = -1;
   int       field_index    = -1;
-  // bool      same_data      = true;    // 标识当前行数据更新后，是否与更前相同
   const int sys_field_num  = table_meta_.sys_field_num();
   const int user_field_num = table_meta_.field_num() - sys_field_num;
 
@@ -626,7 +625,7 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
 
   for (size_t c_idx = 0; c_idx < attr_names.size(); c_idx++) {
     Value *value = values[c_idx];
-    std::string &attr_name = attr_names[c_idx];
+    const std::string &attr_name = attr_names[c_idx];
 
     // 1.先找到要更新的列
     // 2.判断类型是否匹配
@@ -659,20 +658,8 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
       return RC::SCHEMA_FIELD_NOT_EXIST;
     }
 
-    // 判断 新值与旧值是否相等
-    const FieldMeta* null_field = table_meta_.null_field();
-    // common::Bitmap old_null_bitmap(record.data() + null_field->offset(), table_meta_.field_num());
-    // if (same_data) {
-    //   if (value->is_null() && old_null_bitmap.get_bit(field_index)) {
-    //     // both null, same data, do noting
-    //   } else if (value->is_null() || old_null_bitmap.get_bit(field_index)) {
-    //     same_data = false;
-    //   } else if (0 != memcmp(record.data() + field_offset, value->data(), field_length)) {
-    //     same_data = false;
-    //   }
-    // }
-
     // 写入新的值
+    const FieldMeta* null_field = table_meta_.null_field();
     common::Bitmap new_null_bitmap(data + null_field->offset(), table_meta_.field_num());
     if (value->is_null()) {
       new_null_bitmap.set_bit(field_index);
@@ -681,10 +668,6 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
       memcpy(data + field_offset, value->data(), field_length);   
     }
   }
-  // if (same_data) {
-  //   LOG_WARN("update old value equals new value");
-  //   return RC::RECORD_DUPLICATE_KEY;
-  // }
   record.set_data(data);  // 谁来管理old_data呢？
 
   rc = delete_entry_of_indexes(old_data, record.rid(), false);
@@ -709,14 +692,15 @@ RC Table::update_record(Record &record, std::vector<std::string> attr_names, std
     return rc;  // 插入新的索引失败
   }
 
-  record_handler_->update_record(&record);
+  rc = record_handler_->update_record(&record);
   if (rc != RC::SUCCESS) {
     LOG_ERROR(
         "Failed to update record (rid=%d.%d). rc=%d:%s", record.rid().page_num, record.rid().slot_num, rc, strrc(rc));
     return rc;
   }
 
-  free(data);
+  delete data;
+  record.set_data(old_data);
   return rc;
 }
 
