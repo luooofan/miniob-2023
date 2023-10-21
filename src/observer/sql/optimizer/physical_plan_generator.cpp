@@ -225,7 +225,7 @@ RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &groupby_oper, uniq
       return rc;
     }
   }
-  GroupByPhysicalOperator *groupby_operator = new GroupByPhysicalOperator(groupby_oper.groupby_units(),groupby_oper.agg_exprs());
+  GroupByPhysicalOperator *groupby_operator = new GroupByPhysicalOperator(groupby_oper.groupby_units(),groupby_oper.agg_exprs(),groupby_oper.field_exprs());
   if (child_phy_oper) {
     groupby_operator->add_child(std::move(child_phy_oper));
   }

@@ -28,7 +28,7 @@ See the Mulan PSL v2 for more details. */
 class GroupByLogicalOperator : public LogicalOperator
 {
 public:
-  GroupByLogicalOperator(std::vector<GroupByUnit*> &group_units,std::vector<AggrFuncExpr*>&agg_exprs);
+  GroupByLogicalOperator(std::vector<GroupByUnit*> &group_units,std::vector<AggrFuncExpr*>&agg_exprs,std::vector<FieldExpr*>&field_exprs);
   virtual ~GroupByLogicalOperator() = default;
 
   LogicalOperatorType type() const override
@@ -43,7 +43,12 @@ public:
   {
     return agg_exprs_;
   }
+  std::vector<FieldExpr*>&field_exprs()
+  {
+    return field_exprs_;
+  }
 private:
   std::vector<GroupByUnit*>groupby_units_;
   std::vector<AggrFuncExpr*>agg_exprs_;
+  std::vector<FieldExpr*>field_exprs_;
 };

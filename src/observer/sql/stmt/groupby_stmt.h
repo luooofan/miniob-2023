@@ -65,7 +65,18 @@ public:
   {
     agg_exprs_ = agg_exprs;
   }
-
+  void add_field_expr(FieldExpr *expr)
+  {
+    field_exprs_.emplace_back(expr);
+  }
+  void set_field_exprs(std::vector<FieldExpr*>&field_exprs)
+  {
+    field_exprs_ = field_exprs;
+  }
+  std::vector<FieldExpr*>&get_field_exprs()
+  {
+    return field_exprs_;
+  }
 public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
       const GroupBySqlNode *groupby_node, GroupByStmt *&stmt,std::vector<AggrFuncExpr*>&agg_exprs);
@@ -76,4 +87,5 @@ public:
 private:
   std::vector<GroupByUnit *> groupby_units_;
   std::vector<AggrFuncExpr *> agg_exprs_;
+  std::vector<FieldExpr *> field_exprs_;
 };

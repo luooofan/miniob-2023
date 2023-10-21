@@ -58,6 +58,7 @@ enum class ExprType
  * 才能计算出来真实的值。但是有些表达式可能就表示某一个固定的
  * 值，比如ValueExpr。
  */
+class FieldExpr;
 class Expression 
 {
 public:
@@ -106,6 +107,10 @@ public:
   virtual bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) {
     return true;
   }
+  virtual void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)
+  {
+    //什么都不做
+  }
 
   /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
@@ -152,6 +157,10 @@ public:
 
   bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
     return table_map.count(table_name_) != 0;
+  }
+  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs) override
+  {
+    res_exprs.emplace_back(this);
   }
 private:
   Field field_;
@@ -205,6 +214,10 @@ public:
     }
     return false;
   }
+  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  {
+    
+  }
 private:
   Value value_;
 };
@@ -238,7 +251,10 @@ public:
   bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
     return child_->check_can_push_down(table_map);
   }
-
+  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  {
+    //什么都不做
+  }
 private:
   RC cast(const Value &value, Value &cast_value) const;
 
@@ -293,7 +309,10 @@ public:
   bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
     return left_->check_can_push_down(table_map) && right_->check_can_push_down(table_map);
   }
-
+  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  {
+    //什么都不做
+  }
 private:
   CompOp comp_;
   std::unique_ptr<Expression> left_;
@@ -346,7 +365,10 @@ public:
     }
     return true;
   }
-
+  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  {
+    //什么都不做
+  }
 private:
   Type conjunction_type_;
   std::vector<std::unique_ptr<Expression>> children_;
@@ -409,7 +431,11 @@ public:
     }
     return true;
   }
-
+  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  {
+    left_->get_fieldexprs_without_aggrfunc(res_exprs);
+    right_->get_fieldexprs_without_aggrfunc(res_exprs);
+  }
 private:
   RC calc_value(const Value &left_value, const Value &right_value, Value &value) const;
   
@@ -528,6 +554,10 @@ public:
   // TODO
   virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
     const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override;
+  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  {
+    //什么都不做
+  }
 private:
   AggrFuncType type_;
   const FieldExpr *field_ = nullptr;  // don't own this. keep const.

@@ -18,9 +18,10 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/filter_stmt.h"
 #include "storage/field/field.h"
 
-GroupByPhysicalOperator::GroupByPhysicalOperator(std::vector<GroupByUnit*>& groupby_units,std::vector<AggrFuncExpr*> &agg_exprs): groupby_units_(groupby_units)
+GroupByPhysicalOperator::GroupByPhysicalOperator(std::vector<GroupByUnit*>& groupby_units,std::vector<AggrFuncExpr*> &agg_exprs,
+std::vector<FieldExpr*> &field_exprs): groupby_units_(groupby_units)
 {
-  tuple_.init(groupby_units_,agg_exprs);
+  tuple_.init(groupby_units_,agg_exprs,field_exprs);
 }
 
 RC GroupByPhysicalOperator::open(Trx *trx)

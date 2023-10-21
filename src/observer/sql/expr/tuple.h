@@ -109,7 +109,6 @@ public:
    * @param[out] cell 返回的cell
    */
   virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const = 0;
-  virtual RC find_cell(std::string expr_name,Value &cell) const= 0;
 
 
   virtual std::string to_string() const
@@ -224,10 +223,6 @@ public:
     }
     return RC::NOTFOUND;
   }
-  RC find_cell(std::string expr_name,Value &cell) const override
-  {
-    return RC::INTERNAL;
-  }
 
 #if 0
   RC cell_spec_at(int index, const TupleCellSpec *&spec) const override
@@ -304,10 +299,6 @@ public:
     return tuple_->find_cell(spec, cell);
   }
 
-  RC find_cell(std::string expr_name,Value &cell)const override
-  {
-    return RC::INTERNAL;
-  }
   const std::vector<std::unique_ptr<Expression>>& expressions() const
   {
     return exprs_;
@@ -366,10 +357,6 @@ public:
     return RC::NOTFOUND;
   }
 
-  RC find_cell(std::string expr_name,Value &cell)const override
-  {
-    return RC::INTERNAL;
-  }
 
 
 private:
@@ -407,10 +394,6 @@ public:
   }
 
   virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const override
-  {
-    return RC::INTERNAL;
-  }
-  RC find_cell(std::string expr_name,Value &cell)const override
   {
     return RC::INTERNAL;
   }
@@ -467,10 +450,6 @@ public:
 
     return right_->find_cell(spec, value);
   }
-  RC find_cell(std::string expr_name,Value &cell)const override
-  {
-    return RC::INTERNAL;
-  }
 private:
   Tuple *left_ = nullptr;
   Tuple *right_ = nullptr;
@@ -505,7 +484,7 @@ public:
     }
     return tuple_->cell_at(index, cell);
   }
-  RC find_cell(std::string expr_name,Value &cell) const override
+  RC find_cell(std::string expr_name,Value &cell) const
   {
     int index = -1;
     index = find_index_by_name(expr_name);
@@ -517,7 +496,25 @@ public:
     return RC::SUCCESS;
   }
   RC find_cell(const TupleCellSpec &spec, Value &cell) const override
-  {
+  { 
+    if(spec.get_agg_type()!= AGGR_FUNC_TYPE_NUM)//是聚集函数
+    {
+      return find_cell(spec.alias_str(),cell);
+    }
+    else
+    {
+      for (size_t i = 0; i < field_exprs_.size(); ++i) {
+        FieldExpr &expr = *field_exprs_[i];
+        if (std::string(expr.field_name()) == std::string(spec.field_name()) && 
+           std::string(expr.table_name()) == std::string(spec.table_name()) ) 
+          {
+          cell = field_results_[i];
+          LOG_INFO("Field is found in field_exprs");
+          return RC::SUCCESS;
+        }
+      }
+      return RC::SUCCESS;
+    }
     return RC::NOTFOUND;
   }
 
@@ -526,10 +523,10 @@ public:
     return aggr_exprs_;
   }
 
-  const std::vector<FieldExpr *> &get_field_exprs() const
-  {
-    return field_exprs_;
-  }
+  // const std::vector<Expression *> &get_field_exprs() const
+  // {
+  //   return field_exprs_;
+  // }
 
   void do_aggregate_first();
 
@@ -537,7 +534,7 @@ public:
 
   void do_aggregate_done();
 
-  void init(std::vector<GroupByUnit *> &units, std::vector<AggrFuncExpr *> &aggr_exprs)
+  void init(std::vector<GroupByUnit *> &units, std::vector<AggrFuncExpr *> &aggr_exprs,std::vector<FieldExpr *> &field_exprs)
   {
     counts_.resize(aggr_exprs.size());
     all_null_.resize(aggr_exprs.size());
@@ -554,6 +551,11 @@ public:
     {
       agg_expr_name_.emplace_back(expr->name());
     }
+    field_exprs_ = field_exprs;
+    // for(auto *expr:field_exprs)
+    // {
+    //   field_expr_name_.emplace_back(expr->name());
+    // }
   }
   int find_index_by_name(std::string expr_name) const
   {
@@ -568,15 +570,29 @@ public:
     }
     return idx;
   }
+  // int find_field_index_by_name(std::string expr_name) const
+  // {
+  //   int idx = -1;
+  //   for(int i = 0 ; i<field_expr_name_.size();++i)
+  //   {
+  //     if(expr_name == field_expr_name_[i])
+  //     {
+  //       idx = i;
+  //       return idx;
+  //     }
+  //   }
+  //   return idx;
+  // }
 private:
   int count_ = 0;
   std::vector<bool> all_null_;           // for every aggr expr
   std::vector<int> counts_;              // for every aggr expr
   std::vector<Value> aggr_results_;  // for every aggr expr
   std::vector<Value> field_results_;
+  // std::vector<std::string>field_expr_name_;//对应了每个field_expr的名称
   std::vector<std::string>agg_expr_name_;//对应了每个聚集函数的名称
   // not own these below
-  std::vector<FieldExpr *> field_exprs_;//指聚集函数参数的值,TODO 如果是 '*' 需要特殊处理
+  std::vector<FieldExpr *> field_exprs_;
   std::vector<AggrFuncExpr *> aggr_exprs_;  // only use these AggrFuncExpr's type and field info
   Tuple *tuple_ = nullptr;
 };

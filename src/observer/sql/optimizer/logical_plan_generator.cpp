@@ -220,7 +220,8 @@ RC LogicalPlanGenerator::create_plan(
     return RC::SUCCESS;
   }
 
-  unique_ptr<LogicalOperator> groupby_oper(new GroupByLogicalOperator(group_by_stmt->groupby_units(),group_by_stmt->agg_exprs()));
+  unique_ptr<LogicalOperator> groupby_oper(new GroupByLogicalOperator(group_by_stmt->groupby_units(),group_by_stmt->agg_exprs(),
+                group_by_stmt->get_field_exprs()));
   logical_operator = std::move(groupby_oper);
   return RC::SUCCESS;
 }
