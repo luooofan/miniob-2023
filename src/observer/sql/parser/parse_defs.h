@@ -75,6 +75,11 @@ struct ConditionSqlNode
   Expression *right_expr;
 };
 
+struct GroupBySqlNode
+{
+  std::vector<Expression *> exprs_;
+};
+
 /**
  * @brief 描述一串 inner join
  * @ingroup SQLParser

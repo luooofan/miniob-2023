@@ -22,6 +22,8 @@ class TupleCellSpec
 {
 public:
   TupleCellSpec(const char *table_name, const char *field_name, const char *alias = nullptr);
+  TupleCellSpec(std::string table_name,std::string field_name,std::string alias);
+  TupleCellSpec(std::string table_name,std::string field_name);
   TupleCellSpec(const char *alias);
   TupleCellSpec(Expression *expr) : expression_(expr)
   {}

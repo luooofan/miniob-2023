@@ -26,6 +26,7 @@ See the Mulan PSL v2 for more details. */
 class SQLStageEvent;
 class FieldMeta;
 class FilterStmt;
+class GroupByStmt;
 class Db;
 class Table;
 
@@ -80,6 +81,10 @@ public:
   {
     return filter_stmt_;
   }
+  GroupByStmt *groupby_stmt() const
+  {
+    return groupby_stmt_;
+  }
   std::vector<std::unique_ptr<Expression>> &projects()
   {
     return projects_;
@@ -88,4 +93,5 @@ private:
   std::vector<std::unique_ptr<Expression>> projects_;
   std::vector<JoinTables> join_tables_;
   FilterStmt *filter_stmt_ = nullptr;
+  GroupByStmt * groupby_stmt_ = nullptr;
 };

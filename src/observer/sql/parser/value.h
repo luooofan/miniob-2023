@@ -94,6 +94,11 @@ public:
   void set_value(const Value &value);
   std::string to_string() const;
 
+  static const Value &max( Value &a,Value &b);
+  static const Value &min( Value &a,Value &b);
+  static const Value add( Value &left,Value &right);
+  static const Value div( Value &left,Value &right);
+
   int compare(const Value &other) const;
 
   const char *data() const;

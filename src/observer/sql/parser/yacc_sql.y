@@ -781,15 +781,11 @@ aggr_func_type:
     }
     ;
 aggr_func_expr:
-    aggr_func_type LBRACE rel_attr RBRACE
+    aggr_func_type LBRACE expression RBRACE
     {
-      AggrFuncExpression *afexpr = new AggrFuncExpression();
       AggrFuncType funtype = (AggrFuncType)$1;
-      afexpr->set_aggr_fun_type(funtype);
-      FieldExpr *tmp = new FieldExpr();
-      tmp->set_table_name($3->relation_name);
-      tmp->set_field_name($3->attribute_name);
-      afexpr->set_param(tmp);
+      //FieldExpr *tmp = new FieldExpr(std::string($3->relation_name),std::string($3->attribute_name));
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype,$3);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));
     }
@@ -800,13 +796,10 @@ aggr_func_expr:
         yyerror(&@$, sql_string, sql_result, scanner, "only support count(*)");
         YYERROR;
       }
-      AggrFuncExpression *afexpr = new AggrFuncExpression();
       AggrFuncType funtype = (AggrFuncType)$1;
-      afexpr->set_aggr_fun_type(funtype);
-      FieldExpr * tmp = new FieldExpr();
-      tmp->set_field_name("*");
+      ValueExpr * tmp = new ValueExpr();
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype,tmp);
       afexpr->set_param_star(true);
-      afexpr->set_param(tmp);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));
     }

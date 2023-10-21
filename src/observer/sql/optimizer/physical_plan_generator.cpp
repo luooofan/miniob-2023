@@ -34,6 +34,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/calc_physical_operator.h"
 #include "sql/operator/update_logical_operator.h"
 #include "sql/operator/update_physical_operator.h"
+#include "sql/operator/groupby_logical_operator.h"
+#include "sql/operator/groupby_physical_operator.h"
 #include "sql/expr/expression.h"
 #include "common/log/log.h"
 
@@ -58,6 +60,9 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
 
     case LogicalOperatorType::PROJECTION: {
       return create_plan(static_cast<ProjectLogicalOperator &>(logical_operator), oper);
+    } break;
+    case LogicalOperatorType::GROUPBY: {
+      return create_plan(static_cast<GroupByLogicalOperator &>(logical_operator), oper);
     } break;
 
     case LogicalOperatorType::INSERT: {
@@ -195,15 +200,6 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
 
   ProjectPhysicalOperator *project_operator = new ProjectPhysicalOperator();
   project_operator->add_projections(std::move(project_oper.projects()));
-  /*
-  auto &projects = project_oper.projects();
-  for (auto it = projects.begin(); it != projects.end(); it++) 
-  {
-    project_operator->add_projection(*it, true);
-    //如果是聚集函数，需要添加一个groupby算子
-    
-  }
-  */
   if (child_phy_oper) {
     project_operator->add_child(std::move(child_phy_oper));
   }
@@ -211,6 +207,32 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
   oper = unique_ptr<PhysicalOperator>(project_operator);
 
   LOG_TRACE("create a project physical operator");
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &groupby_oper, unique_ptr<PhysicalOperator> &oper)
+{
+  vector<unique_ptr<LogicalOperator>> &child_opers = groupby_oper.children();
+
+  unique_ptr<PhysicalOperator> child_phy_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+    rc = create(*child_oper, child_phy_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create groupby logical operator's child physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+  GroupByPhysicalOperator *groupby_operator = new GroupByPhysicalOperator(groupby_oper.groupby_units(),groupby_oper.agg_exprs());
+  if (child_phy_oper) {
+    groupby_operator->add_child(std::move(child_phy_oper));
+  }
+
+  oper = unique_ptr<PhysicalOperator>(groupby_operator);
+
+  LOG_TRACE("create a groupby physical operator");
   return rc;
 }
 

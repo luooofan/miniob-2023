@@ -59,7 +59,8 @@ RC ParseStage::handle_request(SQLStageEvent *sql_event)
     }
     else
     {
-      sql_result->set_state_string("Failed to parse sql");
+      // sql_result->set_state_string("Failed to parse sql");
+      sql_result->set_state_string("");
     } 
     
     return rc;

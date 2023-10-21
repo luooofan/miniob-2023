@@ -25,6 +25,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/expr/expression.h"
 #include "storage/record/record.h"
 #include "common/lang/bitmap.h"
+#include "sql/stmt/groupby_stmt.h"
 
 class Table;
 
@@ -108,6 +109,8 @@ public:
    * @param[out] cell 返回的cell
    */
   virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const = 0;
+  virtual RC find_cell(std::string expr_name,Value &cell) const= 0;
+
 
   virtual std::string to_string() const
   {
@@ -221,6 +224,10 @@ public:
     }
     return RC::NOTFOUND;
   }
+  RC find_cell(std::string expr_name,Value &cell) const override
+  {
+    return RC::INTERNAL;
+  }
 
 #if 0
   RC cell_spec_at(int index, const TupleCellSpec *&spec) const override
@@ -297,6 +304,10 @@ public:
     return tuple_->find_cell(spec, cell);
   }
 
+  RC find_cell(std::string expr_name,Value &cell)const override
+  {
+    return RC::INTERNAL;
+  }
   const std::vector<std::unique_ptr<Expression>>& expressions() const
   {
     return exprs_;
@@ -355,6 +366,11 @@ public:
     return RC::NOTFOUND;
   }
 
+  RC find_cell(std::string expr_name,Value &cell)const override
+  {
+    return RC::INTERNAL;
+  }
+
 
 private:
   const std::vector<std::unique_ptr<Expression>> &expressions_;
@@ -391,6 +407,10 @@ public:
   }
 
   virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const override
+  {
+    return RC::INTERNAL;
+  }
+  RC find_cell(std::string expr_name,Value &cell)const override
   {
     return RC::INTERNAL;
   }
@@ -447,7 +467,10 @@ public:
 
     return right_->find_cell(spec, value);
   }
-
+  RC find_cell(std::string expr_name,Value &cell)const override
+  {
+    return RC::INTERNAL;
+  }
 private:
   Tuple *left_ = nullptr;
   Tuple *right_ = nullptr;
@@ -474,7 +497,7 @@ public:
   {
     return tuple_->cell_num();
   }
-
+//project 的 tuple 会指向 GroupTuple,会调用cell_at
   RC cell_at(int index, Value &cell) const override
   {
     if (tuple_ == nullptr) {
@@ -482,57 +505,23 @@ public:
     }
     return tuple_->cell_at(index, cell);
   }
-
+  RC find_cell(std::string expr_name,Value &cell) const override
+  {
+    int index = -1;
+    index = find_index_by_name(expr_name);
+    if(index < 0)
+    {
+      return RC::NOTFOUND;
+    }
+    cell = aggr_results_[index];
+    return RC::SUCCESS;
+  }
   RC find_cell(const TupleCellSpec &spec, Value &cell) const override
   {
-    if (tuple_ == nullptr) {
-      return RC::INTERNAL;
-    }
-    // if (field.with_aggr()) {
-    //   for (size_t i = 0; i < aggr_exprs_.size(); ++i) {
-    //     AggrFuncExpression &expr = *aggr_exprs_[i];
-    //     if (field.equal(expr.field()) && expr.get_aggr_func_type() == field.get_aggr_type()) {
-    //       cell = aggr_results_[i];//其中存储的是计算好的结果
-    //       LOG_INFO("Field is found in aggr_exprs");
-    //       return RC::SUCCESS;
-    //     }
-    //   }
-    // }
-    // for (size_t i = 0; i < field_exprs_.size(); ++i) {
-    //   FieldExpr &expr = *field_exprs_[i];
-    //   if (field.equal(expr.field())) {
-    //     cell = field_results_[i];
-    //     LOG_INFO("Field is found in field_exprs");
-    //     return RC::SUCCESS;
-    //   }
-    // }
-    // return RC::NOTFOUND;
+    return RC::NOTFOUND;
   }
 
-  // void get_record(CompoundRecord &record) const override
-  // {
-  //   tuple_->get_record(record);
-  // }
-
-  // void set_record(CompoundRecord &record) override
-  // {
-  //   tuple_->set_record(record);
-  // }
-
-  // void set_right_record(CompoundRecord &record) override
-  // {
-  //   tuple_->set_right_record(record);
-  // }
-
-  // RC cell_spec_at(int index, const TupleCellSpec *&spec) const
-  // {
-  //   if (index < 0 || index >= cell_num()) {
-  //     return RC::INVALID_ARGUMENT;
-  //   }
-  //   return tuple_->cell_spec_at(index, spec);
-  // }
-
-  const std::vector<AggrFuncExpression *> &get_aggr_exprs() const
+  const std::vector<AggrFuncExpr *> &get_aggr_exprs() const
   {
     return aggr_exprs_;
   }
@@ -542,34 +531,52 @@ public:
     return field_exprs_;
   }
 
-  void do_aggregate_first()
-  {
-    
-  }
+  void do_aggregate_first();
 
   void do_aggregate();
 
   void do_aggregate_done();
 
-  void init(const std::vector<AggrFuncExpression *> &aggr_exprs, const std::vector<FieldExpr *> &field_exprs)
+  void init(std::vector<GroupByUnit *> &units, std::vector<AggrFuncExpr *> &aggr_exprs)
   {
     counts_.resize(aggr_exprs.size());
     all_null_.resize(aggr_exprs.size());
     aggr_results_.resize(aggr_exprs.size());
     aggr_exprs_ = aggr_exprs;
-    field_results_.resize(field_exprs.size());
-    field_exprs_ = field_exprs;
-  }
 
+
+    field_results_.resize(units.size());
+    for(GroupByUnit *unit : units)
+    {
+      field_exprs_.emplace_back(static_cast<FieldExpr*>(unit->expr()));
+    }
+    for(auto *expr:aggr_exprs)
+    {
+      agg_expr_name_.emplace_back(expr->name());
+    }
+  }
+  int find_index_by_name(std::string expr_name) const
+  {
+    int idx = -1;
+    for(int i = 0 ; i<agg_expr_name_.size();++i)
+    {
+      if(expr_name == agg_expr_name_[i])
+      {
+        idx = i;
+        return idx;
+      }
+    }
+    return idx;
+  }
 private:
   int count_ = 0;
   std::vector<bool> all_null_;           // for every aggr expr
   std::vector<int> counts_;              // for every aggr expr
   std::vector<Value> aggr_results_;  // for every aggr expr
   std::vector<Value> field_results_;
-
+  std::vector<std::string>agg_expr_name_;//对应了每个聚集函数的名称
   // not own these below
-  std::vector<FieldExpr *> field_exprs_;
-  std::vector<AggrFuncExpression *> aggr_exprs_;  // only use these AggrFuncExpr's type and field info
+  std::vector<FieldExpr *> field_exprs_;//指聚集函数参数的值,TODO 如果是 '*' 需要特殊处理
+  std::vector<AggrFuncExpr *> aggr_exprs_;  // only use these AggrFuncExpr's type and field info
   Tuple *tuple_ = nullptr;
 };

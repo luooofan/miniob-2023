@@ -418,6 +418,7 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
   // set field_
   field_ = Field(table, field_meta);
   // set name
+
   bool is_single_table = (tables.size() == 1);
   if(is_single_table) {
     set_name(field_name_);
@@ -427,7 +428,15 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
   return RC::SUCCESS;
 }
 
-std::string AggrFuncExpression::get_func_name() const
+
+AggrFuncExpr::AggrFuncExpr(AggrFuncType type, Expression *param)
+    : type_(type), param_(param)
+{}
+AggrFuncExpr::AggrFuncExpr(AggrFuncType type, unique_ptr<Expression> param)
+    : type_(type), param_(std::move(param))
+{}
+
+std::string AggrFuncExpr::get_func_name() const
 {
   switch (type_) {
     case AggrFuncType::AGG_MAX:
@@ -445,7 +454,7 @@ std::string AggrFuncExpression::get_func_name() const
   }
   return "unknown_aggr_fun";
 }
-AttrType AggrFuncExpression::value_type() const
+AttrType AggrFuncExpr::value_type() const
 {
   switch (type_) {
     case AggrFuncType::AGG_MAX:
@@ -466,58 +475,38 @@ AttrType AggrFuncExpression::value_type() const
   return UNDEFINED;
 }
 
-// void AggrFuncExpression::to_string(std::ostream &os) const
-// {
-//   // TODO(wbj) if value_ != nullptr
-//   if (with_brace()) {
-//     os << '(';
-//   }
-//   os << get_func_name();
-//   os << '(';
-//   os << field_->table_name();
-//   os << '.';
-//   os << field_->field_name();
-//   os << ')';
-//   if (with_brace()) {
-//     os << ')';
-//   }
-// }
 
 
-RC AggrFuncExpression::get_value(const Tuple &tuple, Value &cell) const
+//Project 算子的cell_at 会调用该函数取得聚集函数最后计算的结果,传入的Tuple 就是gropuby 中的 grouptuple
+RC AggrFuncExpr::get_value(const Tuple &tuple, Value &cell) const
 {
-  // when project tuple call this function, need to pack aggr_func_type in field
-  // the field with aggr_func_type will be used in GroupTuple.find_cell
-  // Field tmp_field(field_->field());
-  // tmp_field.set_aggr(type_);
-  // return tuple.find_cell(tmp_field, cell);
-  
-  return RC::SUCCESS;
-}
-void AggrFuncExpression::get_aggrfuncexprs(const Expression *expr, std::vector<AggrFuncExpression *> &aggrfunc_exprs)
-{
-  // switch (expr->type()) {
-  //   case ExprType::AGGRFUNCTION: {
-  //     const AggrFuncExpression *afexp = (const AggrFuncExpression *)expr;
-  //     aggrfunc_exprs.emplace_back(const_cast<AggrFuncExpression *>(afexp));
-  //     break;
-  //   }
-  //   case ExprType::BINARY: {
-  //     const BinaryExpression *bexp = (const BinaryExpression *)expr;
-  //     get_aggrfuncexprs(bexp->get_left(), aggrfunc_exprs);
-  //     get_aggrfuncexprs(bexp->get_right(), aggrfunc_exprs);
-  //     break;
-  //   }
-  //   default:
-  //     break;
-  // }
-  return;
+  //FieldExpr *tmp = dynamic_cast<FieldExpr*>(param_.get());
+  std::string expr_name = name();
+  AggrFuncType type = get_aggr_func_type();
+  return tuple.find_cell(expr_name,cell);
 }
 
 // TODO(check field)
-RC AggrFuncExpression::create_expression(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table)
+//检查表达式中出现的 表,列 是否存在
+RC AggrFuncExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table)
 {
-  res_expr = this;
+  //1.参数如果为 * ,则只能是 count
+  if(param_is_star_ && type_ != AggrFuncType::AGG_COUNT)
+  {
+    LOG_INFO("only support count(*)");
+    return RC::INVALID_ARGUMENT;
+  }
+  if(param_is_star_ && type_ == AggrFuncType::AGG_COUNT)
+  {
+    return RC::SUCCESS;
+  }
+  //2.参数不为 * ,检查是否合法
+  ASSERT(!param_is_star_, "ERROR!");
+  RC rc = param_->check_field(table_map,tables,db,default_table);
+  if(rc !=  RC::SUCCESS)
+  {
+    return rc;
+  }
   return RC::SUCCESS;
 }

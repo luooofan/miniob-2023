@@ -442,19 +442,14 @@ static bool exp2value(Expression * exp,Value & value)
   return false;
 }
 
-class AggrFuncExpression : public Expression {
+class AggrFuncExpr : public Expression {
 public:
-  AggrFuncExpression() = default;
-  AggrFuncExpression(AggrFuncType type, const FieldExpr *field) : type_(type), field_(field)
-  {}
-  AggrFuncExpression(AggrFuncType type, const FieldExpr *field, bool with_brace) : AggrFuncExpression(type, field)
-  {
-    if (with_brace) {
-      //set_with_brace();
-    }
-  }
+  AggrFuncExpr() = default;
 
-  virtual ~AggrFuncExpression() = default;
+  AggrFuncExpr(AggrFuncType type, Expression *param);
+  AggrFuncExpr(AggrFuncType type, std::unique_ptr<Expression> param);
+  virtual ~AggrFuncExpr() = default;
+
 
   void set_param_value(const ValueExpr *value)
   {
@@ -499,19 +494,19 @@ public:
   {
     return field_->field_name();
   }
-  void set_param(Expression * param)
-  {
-    param_ = param;
-  }
   void set_param_star(bool star)
   {
     param_is_star_ = star;
   }
-  bool get_param_star()
+  bool get_param_star() const
   {
     return param_is_star_;
   }
-  Expression * get_param()
+  std::unique_ptr<Expression> & get_param()
+  {
+    return param_;
+  }
+  const std::unique_ptr<Expression> & get_param() const
   {
     return param_;
   }
@@ -529,17 +524,14 @@ public:
   {
     type_ = type;
   }
-  //void to_string(std::ostream &os) const override;
-
-  static void get_aggrfuncexprs(const Expression *expr, std::vector<AggrFuncExpression *> &aggrfunc_exprs);
 
   // TODO
-  virtual RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr) override;
+  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override;
 private:
   AggrFuncType type_;
   const FieldExpr *field_ = nullptr;  // don't own this. keep const.
   const ValueExpr *value_ = nullptr;  // for count(1) count(*) count("xxx") output
-  Expression * param_ = nullptr; //聚集函数的参数，可能为空
+  std::unique_ptr<Expression> param_; // 参数
   bool param_is_star_ = false;
 };

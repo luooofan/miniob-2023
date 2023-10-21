@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/filter_stmt.h"
+#include "sql/stmt/groupby_stmt.h"
 #include "common/log/log.h"
 #include "common/lang/string.h"
 #include "storage/db/db.h"
@@ -154,9 +155,11 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   // set exprs name
   bool is_single_table = (tables.size() == 1);
   std::vector<std::unique_ptr<Expression>> projects;
+  bool has_agg = false; // 如果有聚集函数，但没有 group by 子句
+  std::vector<AggrFuncExpr *> agg_exprs;
   for (int i = static_cast<int>(select_sql.project_exprs.size()) - 1; i >= 0; i--) {
     RC rc = RC::SUCCESS;
-    Expression* expr = select_sql.project_exprs[i]; //将sqlNode的表达式转移到SelectStmt中
+    Expression* expr = select_sql.project_exprs[i]; // 将sqlNode的表达式转移到SelectStmt中
     // 单独处理 select 后跟 * 的情况 select *; select *.*; select t1.*
     if(expr->type() == ExprType::FIELD) {
       FieldExpr *field_expr = static_cast<FieldExpr*>(expr);
@@ -188,6 +191,11 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         LOG_INFO("expr->check_field error!");
         return rc;
       }
+      if(expr->type() == ExprType::AGGRFUNCTION)
+      {
+        has_agg = true;
+        agg_exprs.emplace_back(static_cast<AggrFuncExpr*>(expr));
+      }
       projects.emplace_back(expr);
     }
   }//end for
@@ -200,6 +208,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   }
 
   // create filter statement in `where` statement
+  // NOTE: here all_conditions maybe empty
   FilterStmt *filter_stmt = nullptr;
   RC rc = FilterStmt::create(db,
       default_table,
@@ -211,13 +220,30 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     LOG_WARN("cannot construct filter stmt");
     return rc;
   }
-
+  //TODO 还未在语法层面支持 group by 语句,
+  GroupByStmt *groupby_stmt = nullptr;
+  rc = GroupByStmt::create(db,
+      default_table,
+      &table_map,
+      nullptr,//暂时先传入Null
+      groupby_stmt,agg_exprs);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("cannot construct groupby stmt");
+    return rc;
+  }
+  //有聚集函数但没 groupby 子句，则手动添加一个groupby stmt
+  if(groupby_stmt == NULL && has_agg)
+  {
+    groupby_stmt = new GroupByStmt();
+    groupby_stmt->set_agg_exprs(agg_exprs);
+  }
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();
   // TODO add expression copy
   select_stmt->join_tables_.swap(join_tables);
   select_stmt->projects_.swap(projects);
   select_stmt->filter_stmt_ = filter_stmt;
+  select_stmt->groupby_stmt_ = groupby_stmt;
   stmt = select_stmt;
   return RC::SUCCESS;
 }
