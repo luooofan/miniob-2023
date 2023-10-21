@@ -460,10 +460,10 @@ AttrType AggrFuncExpr::value_type() const
     case AggrFuncType::AGG_MAX:
     case AggrFuncType::AGG_MIN:
     case AggrFuncType::AGG_SUM:
-      return field_->field().attr_type();
+      return param_->value_type();
       break;
     case AggrFuncType::AGG_AVG:
-      // TODO(wbj)
+      return DOUBLES;
       break;
     case AggrFuncType::AGG_COUNT:
       return INTS;

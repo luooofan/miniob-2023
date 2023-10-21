@@ -465,8 +465,10 @@ public:
   }
   void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
   {
-    left_->get_fieldexprs_without_aggrfunc(res_exprs);
-    right_->get_fieldexprs_without_aggrfunc(res_exprs);
+    if(left_)
+      left_->get_fieldexprs_without_aggrfunc(res_exprs);
+    if(right_)
+      right_->get_fieldexprs_without_aggrfunc(res_exprs);
   }
   virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
   {
