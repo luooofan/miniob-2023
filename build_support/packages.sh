@@ -1,20 +1,21 @@
 #!/bin/bash
 
 ## =================================================================
-## BUSTUB PACKAGE INSTALLATION
+## MINIOB PACKAGE INSTALLATION
 ##
 ## This script will install all the packages that are needed to
 ## build and run the DBMS.
 ##
 ## Supported environments:
-##  * Ubuntu 18.04
-##  * macOS
+##  * Ubuntu 20.04 (x86-64)
+##  * macOS 11 Big Sur (x86-64 or ARM)
+##  * macOS 12 Monterey (x86-64 or ARM)
 ## =================================================================
 
 main() {
   set -o errexit
 
-    if [ $1 == "-y" ] 
+    if [ "$1" == "-y" ] 
     then 
         install
     else
@@ -43,6 +44,7 @@ install() {
       case $version in
         18.04) install_linux ;;
         20.04) install_linux ;;
+        22.04) install_linux ;;
         *) give_up ;;
       esac
       ;;
@@ -54,11 +56,6 @@ install() {
 give_up() {
   set +x
   echo "Unsupported distribution '$UNAME'"
-  echo "Please contact our support team for additional help."
-  echo "Be sure to include the contents of this message."
-  echo "Platform: $(uname -a)"
-  echo
-  echo "https://github.com/cmu-db/bustub/issues"
   echo
   exit 1
 }
@@ -76,7 +73,8 @@ install_mac() {
   brew ls --versions coreutils || brew install coreutils
   brew ls --versions doxygen || brew install doxygen
   brew ls --versions git || brew install git
-  (brew ls --versions llvm | grep 8) || brew install llvm@8
+  (brew ls --versions llvm | grep 14) || brew install llvm@14
+  brew ls --versions libelf || brew install libelf
 }
 
 install_linux() {
@@ -85,17 +83,17 @@ install_linux() {
   # Install packages.
   apt-get -y install \
       build-essential \
-      clang \
       clang-format \
       clang-tidy \
       clang-tools \
       cmake \
       doxygen \
       git \
-      g++ \
       pkg-config \
-      valgrind \
-      zlib1g-dev
+      zlib1g-dev \
+      libelf-dev \
+      libdwarf-dev
+      # clang \
   # Install pyyaml for run_clang_tidy.py with -export-fixes 
   # pip3 install pyyaml
 }
