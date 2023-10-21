@@ -200,6 +200,11 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     }
   }//end for
   select_sql.project_exprs.clear();
+  //不带groupby的情况下,select 有聚集函数时，不能有其他类型的表达式
+  if( has_agg && agg_exprs.size() != projects.size())
+  {
+    return RC::INVALID_ARGUMENT;
+  }
   std::vector<FieldExpr *> field_expr_for_agg;
   for(const std::unique_ptr<Expression>& expr : projects)
   {
