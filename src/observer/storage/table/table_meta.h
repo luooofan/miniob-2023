@@ -61,6 +61,7 @@ public:
   const IndexMeta *find_index_by_field(const char *field) const;
   const IndexMeta *index(int i) const;
   int index_num() const;
+  bool is_field_in_index(std::vector<std::string> &field_names) const;
 
   int record_size() const;
 

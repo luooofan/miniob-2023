@@ -22,3 +22,57 @@ SELECT * FROM unique_table;
 2 | 1 | 1
 3 | 2 | 1
 ID | COL1 | COL2
+
+3. UPDATE RECORD
+create table t2(c1 int, c2 int, c3 int);
+SUCCESS
+create unique index i2 on t2(c1,c2);
+SUCCESS
+insert into t2 values(1,2,3);
+SUCCESS
+insert into t2 values(1,2,4);
+FAILURE
+insert into t2 values(1,2,4);
+FAILURE
+insert into t2 values(1,3,3);
+SUCCESS
+select * from t2;
+1 | 2 | 3
+1 | 3 | 3
+C1 | C2 | C3
+
+update t2 set c1=2,c2=3 where c2=2;
+SUCCESS
+select * from t2;
+1 | 3 | 3
+2 | 3 | 3
+C1 | C2 | C3
+
+insert into t2 values(1,1,1),(1,3,4);
+FAILURE
+select * from t2;
+1 | 3 | 3
+2 | 3 | 3
+C1 | C2 | C3
+
+4. UPDATE RECORDS
+create table t3(c1 int, c2 int);
+SUCCESS
+create unique index x1 on t3(c1);
+SUCCESS
+create unique index x2 on t3(c2);
+SUCCESS
+insert into t3 values(1,2);
+SUCCESS
+insert into t3 values(2,1);
+SUCCESS
+insert into t3 values(3,3);
+SUCCESS
+
+update t3 set c2=4 where c1<3;
+FAILURE
+select * from t3;
+1 | 2
+2 | 1
+3 | 3
+C1 | C2

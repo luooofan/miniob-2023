@@ -20,7 +20,8 @@ BplusTreeIndex::~BplusTreeIndex() noexcept
   close();
 }
 
-RC BplusTreeIndex::create(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta)
+RC BplusTreeIndex::create(const char *file_name, const bool unique, const IndexMeta &index_meta, 
+              const std::vector<int> &field_ids, const std::vector<const FieldMeta*> &field_metas)
 {
   if (inited_) {
     LOG_WARN("Failed to create index due to the index has been created before. file_name:%s, index:%s, field:%s",
@@ -30,9 +31,9 @@ RC BplusTreeIndex::create(const char *file_name, const IndexMeta &index_meta, co
     return RC::RECORD_OPENNED;
   }
 
-  Index::init(index_meta, field_meta);
+  Index::init(index_meta, field_metas);
 
-  RC rc = index_handler_.create(file_name, field_meta.type(), field_meta.len());
+  RC rc = index_handler_.create(file_name, unique, field_ids, field_metas);
   if (RC::SUCCESS != rc) {
     LOG_WARN("Failed to create index_handler, file_name:%s, index:%s, field:%s, rc:%s",
         file_name,
@@ -48,7 +49,7 @@ RC BplusTreeIndex::create(const char *file_name, const IndexMeta &index_meta, co
   return RC::SUCCESS;
 }
 
-RC BplusTreeIndex::open(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta)
+RC BplusTreeIndex::open(const char *file_name, const IndexMeta &index_meta, const std::vector<const FieldMeta *> &field_metas)
 {
   if (inited_) {
     LOG_WARN("Failed to open index due to the index has been initedd before. file_name:%s, index:%s, field:%s",
@@ -58,7 +59,7 @@ RC BplusTreeIndex::open(const char *file_name, const IndexMeta &index_meta, cons
     return RC::RECORD_OPENNED;
   }
 
-  Index::init(index_meta, field_meta);
+  Index::init(index_meta, field_metas);
 
   RC rc = index_handler_.open(file_name);
   if (RC::SUCCESS != rc) {
@@ -89,12 +90,12 @@ RC BplusTreeIndex::close()
 
 RC BplusTreeIndex::insert_entry(const char *record, const RID *rid)
 {
-  return index_handler_.insert_entry(record + field_meta_.offset(), rid);
+  return index_handler_.insert_entry(record, rid);
 }
 
 RC BplusTreeIndex::delete_entry(const char *record, const RID *rid)
 {
-  return index_handler_.delete_entry(record + field_meta_.offset(), rid);
+  return index_handler_.delete_entry(record, rid);
 }
 
 IndexScanner *BplusTreeIndex::create_scanner(

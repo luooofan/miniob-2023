@@ -27,4 +27,9 @@ GPATH
 GTAGS
 docs/book
 *.pyc
+miniob/
+start.sh
+connect.sh
+clean.sh
+observer.log*
 #*#
