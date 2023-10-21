@@ -201,15 +201,16 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   }//end for
   select_sql.project_exprs.clear();
   //不带groupby的情况下,select 有聚集函数时，不能有其他类型的表达式
-  if( has_agg && agg_exprs.size() != projects.size())
+  if(has_agg && agg_exprs.size() != projects.size())
   {
+    LOG_WARN("agg_func error");
     return RC::INVALID_ARGUMENT;
   }
-  std::vector<FieldExpr *> field_expr_for_agg;
-  for(const std::unique_ptr<Expression>& expr : projects)
-  {
-    expr->get_fieldexprs_without_aggrfunc(field_expr_for_agg);
-  }
+  // std::vector<FieldExpr *> field_expr_for_agg;
+  // for(const std::unique_ptr<Expression>& expr : projects)
+  // {
+  //   expr->get_fieldexprs_without_aggrfunc(field_expr_for_agg);
+  // }
   LOG_INFO("got %d tables in from stmt and %d exprs in query stmt", tables.size(), projects.size());
 
   Table *default_table = nullptr;
@@ -246,7 +247,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   {
     groupby_stmt = new GroupByStmt();
     groupby_stmt->set_agg_exprs(agg_exprs);
-    groupby_stmt->set_field_exprs(field_expr_for_agg);
+    //groupby_stmt->set_field_exprs(field_expr_for_agg);
   }
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();
