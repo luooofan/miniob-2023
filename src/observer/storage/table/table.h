@@ -84,6 +84,7 @@ public:
   //将该record的attr_name列更新为 value
   RC update_record(Record &record, const char* attr_name, Value *value);
   RC update_record(Record &record, const std::vector<std::string> &attr_names, const std::vector<Value*> &values);
+  RC update_record(Record &old_record, Record &new_record);
   
   RC recover_insert_record(Record &record);
 
