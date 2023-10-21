@@ -24,7 +24,8 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 
 class Tuple;
-
+class FieldExpr;
+class AggrFuncExpr;
 /**
  * @defgroup Expression
  * @brief 表达式
@@ -58,7 +59,7 @@ enum class ExprType
  * 才能计算出来真实的值。但是有些表达式可能就表示某一个固定的
  * 值，比如ValueExpr。
  */
-class FieldExpr;
+
 class Expression 
 {
 public:
@@ -111,6 +112,12 @@ public:
   {
     //什么都不做
   }
+  //返回false 代表该表达式中不存在 AggrFuncExpr
+  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+  {
+    //什么都不做
+    return false;
+  }
 
   /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
@@ -161,6 +168,11 @@ public:
   void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs) override
   {
     res_exprs.emplace_back(this);
+  }
+  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+  {
+    //什么都不做
+    return false;
   }
 private:
   Field field_;
@@ -218,6 +230,11 @@ public:
   {
     
   }
+  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+  {
+    //什么都不做
+    return false;
+  }
 private:
   Value value_;
 };
@@ -254,6 +271,11 @@ public:
   void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
   {
     //什么都不做
+  }
+  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+  {
+    //什么都不做
+    return false;
   }
 private:
   RC cast(const Value &value, Value &cast_value) const;
@@ -313,6 +335,11 @@ public:
   {
     //什么都不做
   }
+  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+  {
+    //什么都不做
+    return false;
+  }
 private:
   CompOp comp_;
   std::unique_ptr<Expression> left_;
@@ -368,6 +395,11 @@ public:
   void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
   {
     //什么都不做
+  }
+  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+  {
+    //什么都不做
+    return false;
   }
 private:
   Type conjunction_type_;
@@ -435,6 +467,17 @@ public:
   {
     left_->get_fieldexprs_without_aggrfunc(res_exprs);
     right_->get_fieldexprs_without_aggrfunc(res_exprs);
+  }
+  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+  {
+    bool l = false;
+    bool r = false;
+    if(left_)
+      l= left_->get_aggrexpr(res_exprs);
+    
+    if(right_)
+     r = right_->get_aggrexpr(res_exprs);
+    return l || r;
   }
 private:
   RC calc_value(const Value &left_value, const Value &right_value, Value &value) const;
@@ -557,6 +600,11 @@ public:
   void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
   {
     //什么都不做
+  }
+  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+  {
+    res_exprs.emplace_back(this);
+    return true;
   }
 private:
   AggrFuncType type_;

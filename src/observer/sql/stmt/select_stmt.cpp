@@ -155,8 +155,9 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   // set exprs name
   bool is_single_table = (tables.size() == 1);
   std::vector<std::unique_ptr<Expression>> projects;
-  bool has_agg = false; // 如果有聚集函数，但没有 group by 子句
+  
   std::vector<AggrFuncExpr *> agg_exprs;
+  int project_number_with_aggfunc = 0; // min(c1) + 1 中有聚集函数
   for (int i = static_cast<int>(select_sql.project_exprs.size()) - 1; i >= 0; i--) {
     RC rc = RC::SUCCESS;
     Expression* expr = select_sql.project_exprs[i]; // 将sqlNode的表达式转移到SelectStmt中
@@ -191,17 +192,16 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         LOG_INFO("expr->check_field error!");
         return rc;
       }
-      if(expr->type() == ExprType::AGGRFUNCTION)
+      if(expr->get_aggrexpr(agg_exprs))//如果当前表达式中有聚集函数
       {
-        has_agg = true;
-        agg_exprs.emplace_back(static_cast<AggrFuncExpr*>(expr));
+        project_number_with_aggfunc++;
       }
       projects.emplace_back(expr);
     }
   }//end for
   select_sql.project_exprs.clear();
   //不带groupby的情况下,select 有聚集函数时，不能有其他类型的表达式
-  if(has_agg && agg_exprs.size() != projects.size())
+  if(project_number_with_aggfunc > 0 && project_number_with_aggfunc != projects.size())
   {
     LOG_WARN("agg_func error");
     return RC::INVALID_ARGUMENT;
@@ -243,7 +243,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     return rc;
   }
   //有聚集函数但没 groupby 子句，则手动添加一个groupby stmt
-  if(groupby_stmt == NULL && has_agg)
+  if(groupby_stmt == NULL && project_number_with_aggfunc > 0)
   {
     groupby_stmt = new GroupByStmt();
     groupby_stmt->set_agg_exprs(agg_exprs);
