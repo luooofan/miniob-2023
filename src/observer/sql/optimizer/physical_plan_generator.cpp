@@ -195,6 +195,15 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
 
   ProjectPhysicalOperator *project_operator = new ProjectPhysicalOperator();
   project_operator->add_projections(std::move(project_oper.projects()));
+  /*
+  auto &projects = project_oper.projects();
+  for (auto it = projects.begin(); it != projects.end(); it++) 
+  {
+    project_operator->add_projection(*it, true);
+    //如果是聚集函数，需要添加一个groupby算子
+    
+  }
+  */
   if (child_phy_oper) {
     project_operator->add_child(std::move(child_phy_oper));
   }

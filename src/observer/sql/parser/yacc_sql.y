@@ -109,6 +109,11 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         NOT
         LIKE
         UNIQUE
+        AGGR_MAX
+        AGGR_MIN
+        AGGR_SUM
+        AGGR_AVG
+        AGGR_COUNT
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -164,6 +169,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <condition_list>      condition_list
 %type <expression_list>     select_attr
 %type <expression>          expression
+%type <expression>          aggr_func_expr
+%type <number>              aggr_func_type
 %type <expression_list>     expression_list
 %type <update_kv_list>      update_kv_list
 %type <update_kv>           update_kv
@@ -751,6 +758,57 @@ expression:
       $$ = new FieldExpr($1->relation_name, $1->attribute_name);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
+    }
+    |aggr_func_expr{
+      $$ = $1;
+    }
+    ;
+aggr_func_type:
+    AGGR_MAX {
+      $$ = AggrFuncType::AGG_MAX;
+    }
+    | AGGR_MIN {
+      $$ = AggrFuncType::AGG_MIN;
+    }
+    | AGGR_SUM {
+      $$ = AggrFuncType::AGG_SUM;
+    }
+    | AGGR_AVG {
+      $$ = AggrFuncType::AGG_AVG;
+    }
+    | AGGR_COUNT {
+      $$ = AggrFuncType::AGG_COUNT;
+    }
+    ;
+aggr_func_expr:
+    aggr_func_type LBRACE rel_attr RBRACE
+    {
+      AggrFuncExpression *afexpr = new AggrFuncExpression();
+      AggrFuncType funtype = (AggrFuncType)$1;
+      afexpr->set_aggr_fun_type(funtype);
+      FieldExpr *tmp = new FieldExpr();
+      tmp->set_table_name($3->relation_name);
+      tmp->set_field_name($3->attribute_name);
+      afexpr->set_param(tmp);
+      $$ = afexpr;
+      $$->set_name(token_name(sql_string, &@$));
+    }
+    | aggr_func_type LBRACE '*' RBRACE
+    {
+      if($1 != AggrFuncType::AGG_COUNT)
+      {
+        yyerror(&@$, sql_string, sql_result, scanner, "only support count(*)");
+        YYERROR;
+      }
+      AggrFuncExpression *afexpr = new AggrFuncExpression();
+      AggrFuncType funtype = (AggrFuncType)$1;
+      afexpr->set_aggr_fun_type(funtype);
+      FieldExpr * tmp = new FieldExpr();
+      tmp->set_field_name("*");
+      afexpr->set_param_star(true);
+      afexpr->set_param(tmp);
+      $$ = afexpr;
+      $$->set_name(token_name(sql_string, &@$));
     }
     ;
 

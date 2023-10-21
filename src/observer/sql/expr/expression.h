@@ -44,6 +44,7 @@ enum class ExprType
   COMPARISON,   ///< 需要做比较的表达式
   CONJUNCTION,  ///< 多个表达式使用同一种关系(AND或OR)来联结
   ARITHMETIC,   ///< 算术运算
+  AGGRFUNCTION,
 };
 
 /**
@@ -418,6 +419,7 @@ private:
   std::unique_ptr<Expression> right_;
 };
 
+
 static bool exp2value(Expression * exp,Value & value)
 {
   if(exp->type() == ExprType::VALUE) {
@@ -439,3 +441,105 @@ static bool exp2value(Expression * exp,Value & value)
   }
   return false;
 }
+
+class AggrFuncExpression : public Expression {
+public:
+  AggrFuncExpression() = default;
+  AggrFuncExpression(AggrFuncType type, const FieldExpr *field) : type_(type), field_(field)
+  {}
+  AggrFuncExpression(AggrFuncType type, const FieldExpr *field, bool with_brace) : AggrFuncExpression(type, field)
+  {
+    if (with_brace) {
+      //set_with_brace();
+    }
+  }
+
+  virtual ~AggrFuncExpression() = default;
+
+  void set_param_value(const ValueExpr *value)
+  {
+    value_ = value;
+  }
+  bool is_param_value() const
+  {
+    return nullptr != value_;
+  }
+  const ValueExpr *get_param_value() const
+  {
+    assert(nullptr != value_);
+    return value_;
+  }
+
+  ExprType type() const override
+  {
+    return ExprType::AGGRFUNCTION;
+  }
+
+  const Field &field() const
+  {
+    return field_->field();
+  }
+
+  const FieldExpr &fieldexpr() const
+  {
+    return *field_;
+  }
+
+  // const Table *table() const
+  // {
+  //   return field_->table();
+  // }
+
+  const char *table_name() const
+  {
+    return field_->table_name();
+  }
+
+  const char *field_name() const
+  {
+    return field_->field_name();
+  }
+  void set_param(Expression * param)
+  {
+    param_ = param;
+  }
+  void set_param_star(bool star)
+  {
+    param_is_star_ = star;
+  }
+  bool get_param_star()
+  {
+    return param_is_star_;
+  }
+  Expression * get_param()
+  {
+    return param_;
+  }
+  RC get_value(const Tuple &tuple, Value &value) const override;
+
+  std::string get_func_name() const;
+
+
+  AttrType value_type() const override;
+  AggrFuncType get_aggr_func_type() const
+  {
+    return type_;
+  }
+  void set_aggr_fun_type(AggrFuncType type)
+  {
+    type_ = type;
+  }
+  //void to_string(std::ostream &os) const override;
+
+  static void get_aggrfuncexprs(const Expression *expr, std::vector<AggrFuncExpression *> &aggrfunc_exprs);
+
+  // TODO
+  virtual RC create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table = nullptr) override;
+private:
+  AggrFuncType type_;
+  const FieldExpr *field_ = nullptr;  // don't own this. keep const.
+  const ValueExpr *value_ = nullptr;  // for count(1) count(*) count("xxx") output
+  Expression * param_ = nullptr; //聚集函数的参数，可能为空
+  bool param_is_star_ = false;
+};

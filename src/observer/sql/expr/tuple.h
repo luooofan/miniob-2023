@@ -452,3 +452,124 @@ private:
   Tuple *left_ = nullptr;
   Tuple *right_ = nullptr;
 };
+
+
+class GroupTuple : public Tuple {
+public:
+  GroupTuple() = default;
+  virtual ~GroupTuple()
+  {
+    // TODO(wbj) manage memory
+    // for (AggrFuncExpr *expr : aggr_exprs_)
+    //   delete expr;
+    // aggr_exprs_.clear();
+  }
+
+  void set_tuple(Tuple *tuple)
+  {
+    this->tuple_ = tuple;
+  }
+
+  int cell_num() const override
+  {
+    return tuple_->cell_num();
+  }
+
+  RC cell_at(int index, Value &cell) const override
+  {
+    if (tuple_ == nullptr) {
+      return RC::INTERNAL;
+    }
+    return tuple_->cell_at(index, cell);
+  }
+
+  RC find_cell(const TupleCellSpec &spec, Value &cell) const override
+  {
+    if (tuple_ == nullptr) {
+      return RC::INTERNAL;
+    }
+    // if (field.with_aggr()) {
+    //   for (size_t i = 0; i < aggr_exprs_.size(); ++i) {
+    //     AggrFuncExpression &expr = *aggr_exprs_[i];
+    //     if (field.equal(expr.field()) && expr.get_aggr_func_type() == field.get_aggr_type()) {
+    //       cell = aggr_results_[i];//其中存储的是计算好的结果
+    //       LOG_INFO("Field is found in aggr_exprs");
+    //       return RC::SUCCESS;
+    //     }
+    //   }
+    // }
+    // for (size_t i = 0; i < field_exprs_.size(); ++i) {
+    //   FieldExpr &expr = *field_exprs_[i];
+    //   if (field.equal(expr.field())) {
+    //     cell = field_results_[i];
+    //     LOG_INFO("Field is found in field_exprs");
+    //     return RC::SUCCESS;
+    //   }
+    // }
+    // return RC::NOTFOUND;
+  }
+
+  // void get_record(CompoundRecord &record) const override
+  // {
+  //   tuple_->get_record(record);
+  // }
+
+  // void set_record(CompoundRecord &record) override
+  // {
+  //   tuple_->set_record(record);
+  // }
+
+  // void set_right_record(CompoundRecord &record) override
+  // {
+  //   tuple_->set_right_record(record);
+  // }
+
+  // RC cell_spec_at(int index, const TupleCellSpec *&spec) const
+  // {
+  //   if (index < 0 || index >= cell_num()) {
+  //     return RC::INVALID_ARGUMENT;
+  //   }
+  //   return tuple_->cell_spec_at(index, spec);
+  // }
+
+  const std::vector<AggrFuncExpression *> &get_aggr_exprs() const
+  {
+    return aggr_exprs_;
+  }
+
+  const std::vector<FieldExpr *> &get_field_exprs() const
+  {
+    return field_exprs_;
+  }
+
+  void do_aggregate_first()
+  {
+    
+  }
+
+  void do_aggregate();
+
+  void do_aggregate_done();
+
+  void init(const std::vector<AggrFuncExpression *> &aggr_exprs, const std::vector<FieldExpr *> &field_exprs)
+  {
+    counts_.resize(aggr_exprs.size());
+    all_null_.resize(aggr_exprs.size());
+    aggr_results_.resize(aggr_exprs.size());
+    aggr_exprs_ = aggr_exprs;
+    field_results_.resize(field_exprs.size());
+    field_exprs_ = field_exprs;
+  }
+
+private:
+  int count_ = 0;
+  std::vector<bool> all_null_;           // for every aggr expr
+  std::vector<int> counts_;              // for every aggr expr
+  std::vector<Value> aggr_results_;  // for every aggr expr
+  std::vector<Value> field_results_;
+
+  // not own these below
+  std::vector<FieldExpr *> field_exprs_;
+  std::vector<AggrFuncExpression *> aggr_exprs_;  // only use these AggrFuncExpr's type and field info
+  Tuple *tuple_ = nullptr;
+};

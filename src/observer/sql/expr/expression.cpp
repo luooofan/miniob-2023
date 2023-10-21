@@ -423,6 +423,101 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
     set_name(field_name_);
   } else {
     set_name(table_name_ + "." + field_name_);
-  }  
+  }
+  return RC::SUCCESS;
+}
+
+std::string AggrFuncExpression::get_func_name() const
+{
+  switch (type_) {
+    case AggrFuncType::AGG_MAX:
+      return "max";
+    case AggrFuncType::AGG_MIN:
+      return "min";
+    case AggrFuncType::AGG_SUM:
+      return "sum";
+    case AggrFuncType::AGG_AVG:
+      return "avg";
+    case AggrFuncType::AGG_COUNT:
+      return "count";
+    default:
+      break;
+  }
+  return "unknown_aggr_fun";
+}
+AttrType AggrFuncExpression::value_type() const
+{
+  switch (type_) {
+    case AggrFuncType::AGG_MAX:
+    case AggrFuncType::AGG_MIN:
+    case AggrFuncType::AGG_SUM:
+      return field_->field().attr_type();
+      break;
+    case AggrFuncType::AGG_AVG:
+      // TODO(wbj)
+      break;
+    case AggrFuncType::AGG_COUNT:
+      return INTS;
+      break;
+    default:
+      return UNDEFINED;
+      break;
+  }
+  return UNDEFINED;
+}
+
+// void AggrFuncExpression::to_string(std::ostream &os) const
+// {
+//   // TODO(wbj) if value_ != nullptr
+//   if (with_brace()) {
+//     os << '(';
+//   }
+//   os << get_func_name();
+//   os << '(';
+//   os << field_->table_name();
+//   os << '.';
+//   os << field_->field_name();
+//   os << ')';
+//   if (with_brace()) {
+//     os << ')';
+//   }
+// }
+
+
+RC AggrFuncExpression::get_value(const Tuple &tuple, Value &cell) const
+{
+  // when project tuple call this function, need to pack aggr_func_type in field
+  // the field with aggr_func_type will be used in GroupTuple.find_cell
+  // Field tmp_field(field_->field());
+  // tmp_field.set_aggr(type_);
+  // return tuple.find_cell(tmp_field, cell);
+  
+  return RC::SUCCESS;
+}
+void AggrFuncExpression::get_aggrfuncexprs(const Expression *expr, std::vector<AggrFuncExpression *> &aggrfunc_exprs)
+{
+  // switch (expr->type()) {
+  //   case ExprType::AGGRFUNCTION: {
+  //     const AggrFuncExpression *afexp = (const AggrFuncExpression *)expr;
+  //     aggrfunc_exprs.emplace_back(const_cast<AggrFuncExpression *>(afexp));
+  //     break;
+  //   }
+  //   case ExprType::BINARY: {
+  //     const BinaryExpression *bexp = (const BinaryExpression *)expr;
+  //     get_aggrfuncexprs(bexp->get_left(), aggrfunc_exprs);
+  //     get_aggrfuncexprs(bexp->get_right(), aggrfunc_exprs);
+  //     break;
+  //   }
+  //   default:
+  //     break;
+  // }
+  return;
+}
+
+// TODO(check field)
+RC AggrFuncExpression::create_expression(const std::unordered_map<std::string, Table *> &table_map,
+    const std::vector<Table *> &tables, Db *db,Expression *&res_expr,Table* default_table)
+{
+  res_expr = this;
   return RC::SUCCESS;
 }
