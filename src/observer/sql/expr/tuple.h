@@ -542,11 +542,11 @@ public:
     aggr_exprs_ = aggr_exprs;
 
 
-    field_results_.resize(units.size());
-    for(GroupByUnit *unit : units)
-    {
-      field_exprs_.emplace_back(static_cast<FieldExpr*>(unit->expr()));
-    }
+    field_results_.resize(field_exprs.size());
+    // for(GroupByUnit *unit : units)
+    // {
+    //   field_exprs_.emplace_back(static_cast<FieldExpr*>(unit->expr()));
+    // }
     for(auto *expr:aggr_exprs)
     {
       agg_expr_name_.emplace_back(expr->name());
