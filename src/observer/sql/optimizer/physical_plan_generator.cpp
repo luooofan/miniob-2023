@@ -226,7 +226,10 @@ RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &groupby_oper, uniq
     }
   }
 
-  GroupByPhysicalOperator *groupby_operator = new GroupByPhysicalOperator(std::move(groupby_oper.groupby_fields()),groupby_oper.agg_exprs(),groupby_oper.field_exprs());
+  GroupByPhysicalOperator *groupby_operator = new GroupByPhysicalOperator(
+      std::move(groupby_oper.groupby_fields()),
+      std::move(groupby_oper.agg_exprs()),
+      std::move(groupby_oper.field_exprs()));
   if (child_phy_oper) {
     groupby_operator->add_child(std::move(child_phy_oper));
   }

@@ -544,8 +544,7 @@ value:
       std::string str(tmp);
       Value * value = new Value();
       int date;
-      if(string_to_date(str,date) < 0)
-      {
+      if(string_to_date(str,date) < 0) {
         yyerror(&@$,sql_string,sql_result,scanner,"date invaid",true);
         YYERROR;
       }
@@ -784,22 +783,20 @@ aggr_func_expr:
     aggr_func_type LBRACE expression RBRACE
     {
       AggrFuncType funtype = (AggrFuncType)$1;
-      //FieldExpr *tmp = new FieldExpr(std::string($3->relation_name),std::string($3->attribute_name));
       AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, $3);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));
     }
     | aggr_func_type LBRACE '*' RBRACE
     {
-      if($1 != AggrFuncType::AGG_COUNT)
-      {
+      if($1 != AggrFuncType::AGG_COUNT) {
         yyerror(&@$, sql_string, sql_result, scanner, "only support count(*)");
         YYERROR;
       }
+      // regard count(*) as count(1)
       AggrFuncType funtype = (AggrFuncType)$1;
-      ValueExpr * tmp = new ValueExpr();
-      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, tmp);
-      afexpr->set_param_star(true);
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, new ValueExpr(Value(1)));
+      // afexpr->set_param_constexpr(true);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));
     }

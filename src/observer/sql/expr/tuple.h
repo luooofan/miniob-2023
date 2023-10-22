@@ -511,17 +511,20 @@ public:
     return find_cell(std::string(spec.alias()), cell);
   }
 
-  void init(std::vector<AggrFuncExpr *> &aggr_exprs, std::vector<FieldExpr *> &field_exprs)
+  void init(std::vector<std::unique_ptr<AggrFuncExpr>> &&aggr_exprs,
+      std::vector<std::unique_ptr<FieldExpr>> &&field_exprs)
   {
     aggr_results_.resize(aggr_exprs.size());
     for (size_t i = 0; i < aggr_exprs.size(); ++i) {
-      aggr_results_[i].set_expr(aggr_exprs[i]);
+      aggr_results_[i].set_expr(std::move(aggr_exprs[i]));
     }
+    aggr_exprs.clear();
 
     field_results_.resize(field_exprs.size());
     for (size_t i = 0; i < field_exprs.size(); ++i) {
-      field_results_[i].set_expr(field_exprs[i]);
+      field_results_[i].set_expr(std::move(field_exprs[i]));
     }
+    field_exprs.clear();
   }
   void do_aggregate_first()
   {
@@ -653,12 +656,12 @@ public:
     {
       return result_;
     }
-    void set_expr(const AggrFuncExpr* expr)
+    void set_expr(std::unique_ptr<AggrFuncExpr> expr)
     {
-      expr_ = expr;
+      expr_ = std::move(expr);
     }
   private:
-    const AggrFuncExpr *expr_ = nullptr;
+    std::unique_ptr<AggrFuncExpr> expr_;
     Value result_;
     int count_ = 0;
     bool all_null_ = true;
@@ -675,16 +678,16 @@ public:
     {
       return result_;
     }
-    void set_expr(const FieldExpr *expr)
+    void set_expr(std::unique_ptr<FieldExpr> expr)
     {
-      expr_ = expr;
+      expr_ = std::move(expr);
     }
-    const FieldExpr* expr() const
+    const std::unique_ptr<FieldExpr> &expr() const
     {
       return expr_;
     }
   private:
-    const FieldExpr *expr_ = nullptr;
+    std::unique_ptr<FieldExpr> expr_;
     Value result_;
   };
 

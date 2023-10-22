@@ -28,7 +28,9 @@ See the Mulan PSL v2 for more details. */
 class GroupByLogicalOperator : public LogicalOperator
 {
 public:
-  GroupByLogicalOperator(std::vector<std::unique_ptr<FieldExpr>>&& groupby_fields, std::vector<AggrFuncExpr*>&agg_exprs, std::vector<FieldExpr*>&field_exprs);
+  GroupByLogicalOperator(std::vector<std::unique_ptr<FieldExpr>>&& groupby_fields,
+                         std::vector<std::unique_ptr<AggrFuncExpr>> &&agg_exprs,
+                         std::vector<std::unique_ptr<FieldExpr>> &&field_exprs);
   virtual ~GroupByLogicalOperator() = default;
 
   LogicalOperatorType type() const override
@@ -39,16 +41,16 @@ public:
   {
     return groupby_fields_;
   }
-  std::vector<AggrFuncExpr*>&agg_exprs()
+  std::vector<std::unique_ptr<AggrFuncExpr>> &agg_exprs()
   {
     return agg_exprs_;
   }
-  std::vector<FieldExpr*>&field_exprs()
+  std::vector<std::unique_ptr<FieldExpr>> &field_exprs()
   {
     return field_exprs_;
   }
 private:
   std::vector<std::unique_ptr<FieldExpr>> groupby_fields_;
-  std::vector<AggrFuncExpr*> agg_exprs_;
-  std::vector<FieldExpr*> field_exprs_;
+  std::vector<std::unique_ptr<AggrFuncExpr>> agg_exprs_;
+  std::vector<std::unique_ptr<FieldExpr>> field_exprs_;
 };

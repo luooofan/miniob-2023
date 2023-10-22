@@ -110,6 +110,8 @@ public:
     return check_func(this);
   }
 
+  virtual std::unique_ptr<Expression> deep_copy() const = 0;
+
   /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
    */
@@ -152,6 +154,11 @@ public:
 
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
     const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr);
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    return std::unique_ptr<FieldExpr>(new FieldExpr(*this));
+  }
 
 private:
   Field field_;
@@ -204,6 +211,12 @@ public:
     }
     return false;
   }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    return std::unique_ptr<ValueExpr>(new ValueExpr(*this));
+  }
+
 private:
   Value value_;
 };
@@ -246,6 +259,13 @@ public:
       return rc;
     }
     return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    auto new_expr = std::make_unique<CastExpr>(child_->deep_copy(), cast_type_);
+    new_expr->set_name(name());
+    return new_expr;
   }
 
 private:
@@ -319,6 +339,19 @@ public:
     }
     return RC::SUCCESS;
   }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::unique_ptr<Expression> new_left = left_ ->deep_copy();
+    std::unique_ptr<Expression> new_right;
+    if (right_) { // NOTE: not has_rhs
+      new_right = right_->deep_copy();
+    }
+    auto new_expr = std::make_unique<ComparisonExpr>(comp_, std::move(new_left), std::move(new_right));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
 private:
   CompOp comp_;
   std::unique_ptr<Expression> left_;
@@ -375,6 +408,17 @@ public:
       }
     }
     return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_children;
+    for (auto& child : children_) {
+      new_children.emplace_back(child->deep_copy());
+    }
+    auto new_expr = std::make_unique<ConjunctionExpr>(conjunction_type_, std::move(new_children));
+    new_expr->set_name(name());
+    return new_expr;
   }
 
 private:
@@ -443,6 +487,19 @@ public:
     }
     return RC::SUCCESS;
   }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::unique_ptr<Expression> new_left = left_ ->deep_copy();
+    std::unique_ptr<Expression> new_right;
+    if (right_) { // NOTE: not has_rhs
+      new_right = right_->deep_copy();
+    }
+    auto new_expr = std::make_unique<ArithmeticExpr>(arithmetic_type_, std::move(new_left), std::move(new_right));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
 private:
   RC calc_value(const Value &left_value, const Value &right_value, Value &value) const;
   
@@ -477,7 +534,6 @@ static bool exp2value(Expression * exp,Value & value)
 
 class AggrFuncExpr : public Expression {
 public:
-  AggrFuncExpr() = default;
   AggrFuncExpr(AggrFuncType type, Expression *param);
   AggrFuncExpr(AggrFuncType type, std::unique_ptr<Expression> param);
   virtual ~AggrFuncExpr() = default;
@@ -486,15 +542,10 @@ public:
   {
     return ExprType::AGGRFUNCTION;
   }
-  void set_param_star(bool star)
-  {
-    param_is_star_ = star;
-    param_is_constexpr_ = star;
-  }
-  bool get_param_star() const
-  {
-    return param_is_star_;
-  }
+  // void set_param_constexpr(bool flag)
+  // {
+  //   param_is_constexpr_ = flag;
+  // }
   std::unique_ptr<Expression> &get_param()
   {
     return param_;
@@ -506,7 +557,6 @@ public:
   RC get_value(const Tuple &tuple, Value &value) const override;
 
   std::string get_func_name() const;
-
 
   AttrType value_type() const override;
   AggrFuncType get_aggr_func_type() const
@@ -527,10 +577,11 @@ public:
     type_ = type;
   }
 
+  // 聚集函数表达式的 traverse[_check] 需要特殊对待 目前如果参数是常量表达式就不进行遍历
   void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
     if (filter(this)) {
-      if (!param_is_star_) {
+      if (!param_is_constexpr_) {
         param_->traverse(func, filter);
       }
       func(this);
@@ -542,15 +593,25 @@ public:
     RC rc = RC::SUCCESS;
     if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
-    } else if (!param_is_star_ && RC::SUCCESS != (rc = param_->traverse_check(check_func))) {
+    } else if (!param_is_constexpr_ && RC::SUCCESS != (rc = param_->traverse_check(check_func))) {
       return rc;
     }
     return rc;
   }
 
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::unique_ptr<Expression> new_param;
+    if (param_) {
+      new_param = param_->deep_copy();
+    }
+    auto new_expr = std::make_unique<AggrFuncExpr>(type_, std::move(new_param));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
 private:
   AggrFuncType type_;
-  std::unique_ptr<Expression> param_; // 参数
-  bool param_is_star_ = false;
+  std::unique_ptr<Expression> param_;
   bool param_is_constexpr_ = false;
 };

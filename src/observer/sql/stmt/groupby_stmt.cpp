@@ -7,7 +7,9 @@
 #include "sql/stmt/filter_stmt.h"
 
 RC GroupByStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-    const GroupBySqlNode *groupby_node, GroupByStmt *&stmt, std::vector<AggrFuncExpr*>&agg_exprs, std::vector<FieldExpr*>& field_exprs)
+    const GroupBySqlNode *groupby_node, GroupByStmt *&stmt,
+    std::vector<std::unique_ptr<AggrFuncExpr>> &&agg_exprs,
+    std::vector<std::unique_ptr<FieldExpr>> &&field_exprs)
 {
   RC rc = RC::SUCCESS;
   stmt = nullptr;

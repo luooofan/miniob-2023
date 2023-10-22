@@ -429,11 +429,22 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
 
 
 AggrFuncExpr::AggrFuncExpr(AggrFuncType type, Expression *param)
-    : type_(type), param_(param)
+    : AggrFuncExpr(type, std::unique_ptr<Expression>(param))
 {}
 AggrFuncExpr::AggrFuncExpr(AggrFuncType type, unique_ptr<Expression> param)
     : type_(type), param_(std::move(param))
-{}
+{
+  //
+  auto check_is_constexpr = [](const Expression* expr) -> RC {
+    if (expr->type() == ExprType::FIELD) {
+      return RC::INTERNAL;
+    }
+    return RC::SUCCESS;
+  };
+  if (RC::SUCCESS == param_->traverse_check(check_is_constexpr)) {
+    param_is_constexpr_ = true;
+  }
+}
 
 std::string AggrFuncExpr::get_func_name() const
 {

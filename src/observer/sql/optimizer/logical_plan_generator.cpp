@@ -213,13 +213,15 @@ RC LogicalPlanGenerator::create_plan(
 
 RC LogicalPlanGenerator::create_plan(GroupByStmt *group_by_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
-  if(group_by_stmt == nullptr) {
+  if (group_by_stmt == nullptr) {
     logical_operator = nullptr;
     return RC::SUCCESS;
   }
 
-  unique_ptr<LogicalOperator> groupby_oper(new GroupByLogicalOperator(std::move(group_by_stmt->get_groupby_fields()),group_by_stmt->get_agg_exprs(),
-                group_by_stmt->get_field_exprs()));
+  unique_ptr<LogicalOperator> groupby_oper(
+    new GroupByLogicalOperator(std::move(group_by_stmt->get_groupby_fields()),
+                               std::move(group_by_stmt->get_agg_exprs()),
+                               std::move(group_by_stmt->get_field_exprs())));
   logical_operator = std::move(groupby_oper);
   return RC::SUCCESS;
 }

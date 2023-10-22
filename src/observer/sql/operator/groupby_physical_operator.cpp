@@ -18,10 +18,13 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/filter_stmt.h"
 #include "storage/field/field.h"
 
-GroupByPhysicalOperator::GroupByPhysicalOperator(std::vector<std::unique_ptr<FieldExpr>>&& groupby_fields, std::vector<AggrFuncExpr*> &agg_exprs,
-  std::vector<FieldExpr*> &field_exprs): groupby_fields_(std::move(groupby_fields))
+GroupByPhysicalOperator::GroupByPhysicalOperator(std::vector<std::unique_ptr<FieldExpr>>&& groupby_fields,
+  std::vector<std::unique_ptr<AggrFuncExpr>> &&agg_exprs,
+  std::vector<std::unique_ptr<FieldExpr>> &&field_exprs)
+    : groupby_fields_(std::move(groupby_fields))
 {
-  tuple_.init(agg_exprs, field_exprs);
+  groupby_fields_.swap(groupby_fields);
+  tuple_.init(std::move(agg_exprs), std::move(field_exprs));
 }
 
 RC GroupByPhysicalOperator::open(Trx *trx)
@@ -48,7 +51,7 @@ RC GroupByPhysicalOperator::next()
     return RC::RECORD_EOF;
   }
   RC rc = RC::SUCCESS;
-  if(is_first_) {
+  if (is_first_) {
     rc = children_[0]->next();
     // maybe empty. count(x) -> 0
     if (RC::SUCCESS != rc) {
@@ -83,7 +86,7 @@ RC GroupByPhysicalOperator::next()
     for (size_t i = 0; i < groupby_fields_.size(); ++i) {
       const std::unique_ptr<FieldExpr>& field = groupby_fields_[i];
       Value value;
-      field->get_value(*children_[0]->current_tuple(),value);
+      field->get_value(*children_[0]->current_tuple(), value);
       if(value.compare(pre_values_[i]) != 0) {
         // 2. update pre_values_ and set new group
         pre_values_[i] = value;
