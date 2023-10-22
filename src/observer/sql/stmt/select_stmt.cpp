@@ -53,7 +53,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     return RC::INVALID_ARGUMENT;
   }
 
-  // 1. 先处理 from 语句 收集表信息
+  // 1. 先处理 from clause 收集表信息
   // from 中的 table 有两个层级 第一级是笛卡尔积 第二级是 INNER JOIN
   // e.g. (t1 inner join t2 inner join t3, t4) -> (t1, t2, t3), (t4)
   // 收集表信息的同时这里做了 predicate expr 下推
@@ -114,8 +114,6 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 
   // 判断 condition 是否可以下推
   auto cond_is_ok = [&check_can_push_down, &local_table_map](const ConditionSqlNode& node) ->bool {
-    // return node.left_expr->check_can_push_down(local_table_map) 
-            // && node.right_expr->check_can_push_down(local_table_map);
     return RC::SUCCESS == node.left_expr->traverse_check(check_can_push_down) &&
             RC::SUCCESS == node.right_expr->traverse_check(check_can_push_down);
   };
@@ -306,7 +304,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     // 2. 语义检查 check:
     // - 聚集函数参数个数、参数为 * 的检查是在 syntax parser 完成
     // - 聚集函数中的字段 OK
-    // - 非聚集函数中的字段应该 不在 group by 的字段中
+    // - 非聚集函数中的字段应该 必须在 group by 的字段中
     // - 没有 group by clause 时，不应该有非聚集函数中的字段
     // 当前没有 group by，所以只 check 一下有没有不在聚集函数中的字段即可
     if (!field_exprs_not_in_aggr.empty()) {

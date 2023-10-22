@@ -22,6 +22,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/value.h"
 
 class Expression;
+class FieldExpr;
 
 typedef enum { AGG_MAX, AGG_MIN, AGG_SUM, AGG_AVG, AGG_COUNT, AGGR_FUNC_TYPE_NUM } AggrFuncType;
 /**
@@ -77,7 +78,7 @@ struct ConditionSqlNode
 
 struct GroupBySqlNode
 {
-  std::vector<Expression *> exprs_;
+  std::vector<FieldExpr *> exprs_;
 };
 
 /**

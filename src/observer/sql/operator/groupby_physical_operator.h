@@ -22,7 +22,7 @@ See the Mulan PSL v2 for more details. */
 class GroupByPhysicalOperator : public PhysicalOperator
 {
 public:
-  GroupByPhysicalOperator(std::vector<GroupByUnit*>& groupby_units,std::vector<AggrFuncExpr*> &agg_exprs,std::vector<FieldExpr*> &field_exprs);
+  GroupByPhysicalOperator(std::vector<std::unique_ptr<FieldExpr>>&& groupby_fields, std::vector<AggrFuncExpr*> &agg_exprs, std::vector<FieldExpr*> &field_exprs);
 
   virtual ~GroupByPhysicalOperator() = default;
 
@@ -41,7 +41,7 @@ private:
   bool is_first_ = true;
   bool is_new_group_ = true;
   bool is_record_eof_ = false;
-  std::vector<GroupByUnit *> groupby_units_;
+  std::vector<std::unique_ptr<FieldExpr>> groupby_fields_;
   std::vector<Value> pre_values_;  // its size equal to groupby_units.size
 
   GroupTuple tuple_;

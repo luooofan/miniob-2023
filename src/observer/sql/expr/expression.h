@@ -95,12 +95,16 @@ public:
     constexpr auto always_true = [](const Expression *) { return true; };
     this->traverse(func, always_true);
   }
+
+  // 带条件的 后序遍历 dfs
   virtual void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter)
   {
     if (filter(this)) {
       func(this);
     }
   }
+
+  // 先序遍历 检查
   virtual RC traverse_check(const std::function<RC(Expression*)>& check_func)
   {
     return check_func(this);

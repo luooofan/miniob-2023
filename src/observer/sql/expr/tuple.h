@@ -511,7 +511,7 @@ public:
     return find_cell(std::string(spec.alias()), cell);
   }
 
-  void init(std::vector<GroupByUnit *> &units, std::vector<AggrFuncExpr *> &aggr_exprs,std::vector<FieldExpr *> &field_exprs)
+  void init(std::vector<AggrFuncExpr *> &aggr_exprs, std::vector<FieldExpr *> &field_exprs)
   {
     aggr_results_.resize(aggr_exprs.size());
     for (size_t i = 0; i < aggr_exprs.size(); ++i) {

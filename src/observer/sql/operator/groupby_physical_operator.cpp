@@ -18,10 +18,10 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/filter_stmt.h"
 #include "storage/field/field.h"
 
-GroupByPhysicalOperator::GroupByPhysicalOperator(std::vector<GroupByUnit*>& groupby_units,std::vector<AggrFuncExpr*> &agg_exprs,
-std::vector<FieldExpr*> &field_exprs): groupby_units_(groupby_units)
+GroupByPhysicalOperator::GroupByPhysicalOperator(std::vector<std::unique_ptr<FieldExpr>>&& groupby_fields, std::vector<AggrFuncExpr*> &agg_exprs,
+  std::vector<FieldExpr*> &field_exprs): groupby_fields_(std::move(groupby_fields))
 {
-  tuple_.init(groupby_units_,agg_exprs,field_exprs);
+  tuple_.init(agg_exprs, field_exprs);
 }
 
 RC GroupByPhysicalOperator::open(Trx *trx)
@@ -33,7 +33,7 @@ RC GroupByPhysicalOperator::open(Trx *trx)
   }
   if (RC::SUCCESS != (rc = children_[0]->open(trx))) {
     rc = RC::INTERNAL;
-    LOG_WARN("SortOperater child open failed!");
+    LOG_WARN("GroupByOperater child open failed!");
   }
   tuple_.set_tuple(children_[0] -> current_tuple());
   is_record_eof_ = false;
@@ -62,12 +62,11 @@ RC GroupByPhysicalOperator::next()
     is_first_ = false;
     is_new_group_ = true;
     // set initial value of pre_values_
-    for(auto unit : groupby_units_) {
+    for(const std::unique_ptr<FieldExpr>& field : groupby_fields_) {
       Value val;
-      unit->expr()->get_value(*children_[0]->current_tuple(),val);
+      field->get_value(*children_[0]->current_tuple(),val);
       pre_values_.emplace_back(val);
     }
-    assert(pre_values_.size() == groupby_units_.size());
     LOG_INFO("GroupByOperator set first success!");
   }
 
@@ -81,11 +80,10 @@ RC GroupByPhysicalOperator::next()
       break;
     }
     // 1. adjust whether current tuple is new group or not
-    for (size_t i = 0; i < groupby_units_.size(); ++i) {
-      const GroupByUnit *unit = groupby_units_[i];
-      Expression *expr = unit->expr();
+    for (size_t i = 0; i < groupby_fields_.size(); ++i) {
+      const std::unique_ptr<FieldExpr>& field = groupby_fields_[i];
       Value value;
-      expr->get_value(*children_[0]->current_tuple(),value);
+      field->get_value(*children_[0]->current_tuple(),value);
       if(value.compare(pre_values_[i]) != 0) {
         // 2. update pre_values_ and set new group
         pre_values_[i] = value;
