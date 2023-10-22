@@ -781,6 +781,7 @@ RC Table::update_record(Record &old_record, Record &new_record)
 
   rc = record_handler_->update_record(&new_record);
   if (rc != RC::SUCCESS) {
+    // 更新数据失败应该回滚索引，但是这里除非RID错了，否则不会失败，懒得写回滚索引了
     LOG_ERROR(
         "Failed to update record (rid=%d.%d). rc=%d:%s", new_record.rid().page_num, new_record.rid().slot_num, rc, strrc(rc));
     return rc;

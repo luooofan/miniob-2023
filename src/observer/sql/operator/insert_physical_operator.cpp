@@ -48,6 +48,7 @@ RC InsertPhysicalOperator::open(Trx *trx)
           break;
         }
       }
+      break;  // 插入失败，回滚后应该停止继续插入
     }
   }
   return rc;

@@ -75,10 +75,7 @@ private:
   std::vector<std::string> fields_;
 
   std::vector<int> fields_id_;
-  std::vector<int> fields_offset_;
-  std::vector<int> fields_length_;
-  std::vector<bool> fields_nullable_;
-  std::vector<AttrType> fields_type_;
+  std::vector<FieldMeta> fields_meta_;
   char *tmp_record_data_ = nullptr;   // 用于存放新的Record的data
 
   // 存储已经更新过的行数据，用于回滚

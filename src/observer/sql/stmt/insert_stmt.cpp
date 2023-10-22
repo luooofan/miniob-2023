@@ -67,6 +67,17 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
       if(field_type == CHARS && values[i].length() > field_meta->len()){
           return RC::INVALID_ARGUMENT;
       }
+      if(field_type == CHARS) {
+        if (values[i].length() > field_meta->len()) {
+          return RC::INVALID_ARGUMENT;
+        }
+        // 将不确定长度的 char 改为固定长度的 char
+        char *char_value = (char*)malloc(field_meta->len());
+        memset(char_value, 0, field_meta->len());
+        memcpy(char_value, values[i].data(), values[i].length());
+        const_cast<Value*>(values)[i].set_data(char_value, field_meta->len());
+        free(char_value);
+      }
     }
     valuess.emplace_back(values);
     value_nums.emplace_back(value_num);
