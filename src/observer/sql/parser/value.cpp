@@ -435,22 +435,22 @@ bool Value::get_boolean() const
   return false;
 }
 
-const Value& Value::min( Value &a,Value &b)
+const Value& Value::min(const Value &a, const Value &b)
 {
   if (a.is_null()) {
     return b;  // even if b is also null
   }
-  return a.compare(b) <=0 ? a : b;
+  return a.compare(b) <= 0 ? a : b;
 }
-const Value& Value::max( Value &a,Value &b)
+const Value& Value::max(const Value &a, const Value &b)
 {
-    if (a.is_null()) {
-      return b;  // even if b is also null
-    }
-    return a.compare(b) >= 0 ? a : b;
+  if (a.is_null()) {
+    return b;  // even if b is also null
+  }
+  return a.compare(b) >= 0 ? a : b;
 }
 
-const Value Value::add( Value &left,Value &right)
+const Value Value::add(const Value &left, const Value &right)
 {
   Value result_cell;
   if (left.is_null() || right.is_null()) {
@@ -469,19 +469,17 @@ const Value Value::add( Value &left,Value &right)
   return result_cell;
 }
 
-const Value Value::div( Value &left,Value &right)
+const Value Value::div(const Value &left, const Value &right)
 {
   Value result_cell;
   if (left.is_null() || right.is_null()) {
     result_cell.set_null();
     return result_cell;
   }
-  if(right.get_double() == 0)
-  {
+  if(right.get_double() == 0) {
     result_cell.set_null();
   }
-  else 
-  {
+  else {
     double tmp_left = left.get_double();
     double tmp_right = right.get_double();
     double result = tmp_left / tmp_right;

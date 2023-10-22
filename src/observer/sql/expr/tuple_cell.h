@@ -22,18 +22,7 @@ class TupleCellSpec
 {
 public:
   TupleCellSpec(const char *table_name, const char *field_name, const char *alias = nullptr);
-  TupleCellSpec(std::string table_name,std::string field_name,std::string alias);
-  TupleCellSpec(std::string table_name,std::string field_name);
   TupleCellSpec(const char *alias);
-  TupleCellSpec(){}
-  void set_alias(std::string name)
-  {
-    alias_ = name;
-  }
-  std::string alias_str() const
-  {
-    return alias_;
-  }
   const char *table_name() const
   {
     return table_name_.c_str();
@@ -46,17 +35,9 @@ public:
   {
     return alias_.c_str();
   }
-  void set_agg_type(AggrFuncType type)
-  {
-    type_ =type;
-  }
-  AggrFuncType get_agg_type() const
-  {
-    return type_;
-  }
 private:
   std::string table_name_;
   std::string field_name_;
   std::string alias_;
-  AggrFuncType type_ = AggrFuncType:: AGGR_FUNC_TYPE_NUM;
+  // AggrFuncType type_ = AggrFuncType:: AGGR_FUNC_TYPE_NUM;
 };

@@ -38,18 +38,6 @@ TupleCellSpec::TupleCellSpec(const char *table_name, const char *field_name, con
   }
 }
 
-TupleCellSpec::TupleCellSpec(std::string table_name,std::string field_name)
-{
-  table_name_ = table_name;
-  field_name_ = field_name;
-  alias_ = table_name + "." + field_name_;
-}
-TupleCellSpec::TupleCellSpec(std::string table_name,std::string field_name, std::string alias)
-{
-  table_name_ = table_name;
-  field_name_ = field_name;
-  alias_ = alias;
-}
 TupleCellSpec::TupleCellSpec(const char *alias)
 {
   if (alias) {

@@ -24,8 +24,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 
 class Tuple;
-class FieldExpr;
-class AggrFuncExpr;
+
 /**
  * @defgroup Expression
  * @brief 表达式
@@ -59,7 +58,6 @@ enum class ExprType
  * 才能计算出来真实的值。但是有些表达式可能就表示某一个固定的
  * 值，比如ValueExpr。
  */
-
 class Expression 
 {
 public:
@@ -476,68 +474,28 @@ static bool exp2value(Expression * exp,Value & value)
 class AggrFuncExpr : public Expression {
 public:
   AggrFuncExpr() = default;
-
   AggrFuncExpr(AggrFuncType type, Expression *param);
   AggrFuncExpr(AggrFuncType type, std::unique_ptr<Expression> param);
   virtual ~AggrFuncExpr() = default;
-
-
-  void set_param_value(const ValueExpr *value)
-  {
-    value_ = value;
-  }
-  bool is_param_value() const
-  {
-    return nullptr != value_;
-  }
-  const ValueExpr *get_param_value() const
-  {
-    assert(nullptr != value_);
-    return value_;
-  }
 
   ExprType type() const override
   {
     return ExprType::AGGRFUNCTION;
   }
-
-  const Field &field() const
-  {
-    return field_->field();
-  }
-
-  const FieldExpr &fieldexpr() const
-  {
-    return *field_;
-  }
-
-  // const Table *table() const
-  // {
-  //   return field_->table();
-  // }
-
-  const char *table_name() const
-  {
-    return field_->table_name();
-  }
-
-  const char *field_name() const
-  {
-    return field_->field_name();
-  }
   void set_param_star(bool star)
   {
     param_is_star_ = star;
+    param_is_constexpr_ = star;
   }
   bool get_param_star() const
   {
     return param_is_star_;
   }
-  std::unique_ptr<Expression> & get_param()
+  std::unique_ptr<Expression> &get_param()
   {
     return param_;
   }
-  const std::unique_ptr<Expression> & get_param() const
+  const std::unique_ptr<Expression> &get_param() const
   {
     return param_;
   }
@@ -551,6 +509,15 @@ public:
   {
     return type_;
   }
+
+  // count(*) count(1) count(1+1) 需要特殊处理 null
+  bool is_count_constexpr() const {
+    if (type_ == AggrFuncType::AGG_COUNT && param_is_constexpr_) {
+      return true;
+    }
+    return false;
+  }
+
   void set_aggr_fun_type(AggrFuncType type)
   {
     type_ = type;
@@ -579,8 +546,7 @@ public:
 
 private:
   AggrFuncType type_;
-  const FieldExpr *field_ = nullptr;  // don't own this. keep const.
-  const ValueExpr *value_ = nullptr;  // for count(1) count(*) count("xxx") output
   std::unique_ptr<Expression> param_; // 参数
   bool param_is_star_ = false;
+  bool param_is_constexpr_ = false;
 };

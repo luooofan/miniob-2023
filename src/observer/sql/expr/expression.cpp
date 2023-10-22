@@ -478,8 +478,7 @@ AttrType AggrFuncExpr::value_type() const
 //Project 算子的cell_at 会调用该函数取得聚集函数最后计算的结果,传入的Tuple 就是gropuby 中的 grouptuple
 RC AggrFuncExpr::get_value(const Tuple &tuple, Value &cell) const
 {
-  TupleCellSpec spec;
-  spec.set_agg_type(get_aggr_func_type());
-  spec.set_alias(name());
+  TupleCellSpec spec(name().c_str());
+  // spec.set_agg_type(get_aggr_func_type());
   return tuple.find_cell(spec,cell);
 }
