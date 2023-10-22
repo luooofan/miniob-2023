@@ -16,6 +16,8 @@ See the Mulan PSL v2 for more details. */
 
 #include <string>
 
+static constexpr int MAX_TEXT_LENGTH = 65535;
+
 /**
  * @brief 属性的类型
  * 
@@ -28,6 +30,8 @@ enum AttrType
   FLOATS,         ///< 浮点数类型(4字节)
   DOUBLES,        
   DATES,          ///< 日期类型
+  LONGS,          ///< Int64
+  TEXTS,          ///< text类型，最大65535字节
   NULLS,          ///< null类型
   BOOLEANS,       ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
 };
@@ -55,6 +59,7 @@ public:
   explicit Value(float val);
   explicit Value(double val);
   explicit Value(bool val);
+  explicit Value(int64_t val);
   explicit Value(const char *s, int len = 0);
 
   Value(const Value &other) = default;
@@ -82,6 +87,7 @@ public:
   void set_int(int val);
   void set_float(float val);
   void set_double(double val);
+  void set_long(int64_t val);
   void set_date(int val);
   void set_boolean(bool val);
   void set_string(const char *s, int len = 0);
@@ -126,7 +132,7 @@ public:
   std::string get_string() const;
   bool get_boolean() const;
   double get_double() const;
-
+  int64_t get_long() const;
 
 private:
   AttrType attr_type_ = UNDEFINED;
@@ -137,6 +143,7 @@ private:
     float float_value_;
     bool bool_value_;
     double double_value_;
+    int64_t long_;
   } num_value_;
   std::string str_value_;
 };

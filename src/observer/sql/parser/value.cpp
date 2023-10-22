@@ -20,7 +20,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "common/time/date.h"
 
-const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats","doubles", "dates", "nulls", "booleans"};
+const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "floats","doubles", "dates", "long", "texts", "nulls", "booleans"};
 
 const char *attr_type_to_string(AttrType type)
 {
@@ -56,7 +56,10 @@ Value::Value(bool val)
 {
   set_boolean(val);
 }
-
+Value::Value(int64_t val)
+{
+  set_boolean(val);
+}
 Value::Value(const char *s, int len /*= 0*/)
 {
   set_string(s, len);
@@ -89,6 +92,10 @@ void Value::set_data(char *data, int length)
       num_value_.int_value_ = *(int *)data;
       length_ = length;
     } break;
+    case LONGS: {
+      num_value_.long_ = *(int64_t *)data;
+      length_ = length;
+    } break;
     default: {
       LOG_WARN("unknown data type: %d", attr_type_);
     } break;
@@ -119,6 +126,12 @@ void Value::set_double(double val)
   attr_type_ = DOUBLES;
   num_value_.double_value_ = val;
   length_ = sizeof(val);
+}
+void Value::set_long(int64_t val)
+{
+  attr_type_ = LONGS;
+  num_value_.long_ = val;
+  length_ = sizeof(int64_t);
 }
 void Value::set_boolean(bool val)
 {
@@ -365,6 +378,11 @@ double Value::get_double() const
     }
   }
   return 0;
+}
+
+int64_t Value::get_long() const
+{
+  return num_value_.long_;
 }
 
 

@@ -73,39 +73,40 @@ extern int yydebug;
     STRING_T = 279,
     FLOAT_T = 280,
     DATE_T = 281,
-    HELP = 282,
-    EXIT = 283,
-    DOT = 284,
-    INTO = 285,
-    VALUES = 286,
-    FROM = 287,
-    WHERE = 288,
-    AND = 289,
-    SET = 290,
-    ON = 291,
-    LOAD = 292,
-    DATA = 293,
-    INFILE = 294,
-    EXPLAIN = 295,
-    IS = 296,
-    NULL_T = 297,
-    INNER = 298,
-    JOIN = 299,
-    EQ = 300,
-    LT = 301,
-    GT = 302,
-    LE = 303,
-    GE = 304,
-    NE = 305,
-    NOT = 306,
-    LIKE = 307,
-    UNIQUE = 308,
-    NUMBER = 309,
-    FLOAT = 310,
-    ID = 311,
-    SSS = 312,
-    DATE_STR = 313,
-    UMINUS = 314
+    TEXT_T = 282,
+    HELP = 283,
+    EXIT = 284,
+    DOT = 285,
+    INTO = 286,
+    VALUES = 287,
+    FROM = 288,
+    WHERE = 289,
+    AND = 290,
+    SET = 291,
+    ON = 292,
+    LOAD = 293,
+    DATA = 294,
+    INFILE = 295,
+    EXPLAIN = 296,
+    IS = 297,
+    NULL_T = 298,
+    INNER = 299,
+    JOIN = 300,
+    EQ = 301,
+    LT = 302,
+    GT = 303,
+    LE = 304,
+    GE = 305,
+    NE = 306,
+    NOT = 307,
+    LIKE = 308,
+    UNIQUE = 309,
+    NUMBER = 310,
+    FLOAT = 311,
+    ID = 312,
+    SSS = 313,
+    DATE_STR = 314,
+    UMINUS = 315
   };
 #endif
 
@@ -113,7 +114,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 113 "yacc_sql.y"
+#line 114 "yacc_sql.y"
 
   ParsedSqlNode *                   sql_node;
   ConditionSqlNode *                condition;
@@ -138,7 +139,7 @@ union YYSTYPE
   float                             floats;
   bool                              boolean;
 
-#line 142 "yacc_sql.hpp"
+#line 143 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

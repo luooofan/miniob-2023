@@ -542,6 +542,42 @@ RC DiskBufferPool::recover_page(PageNum page_num)
   return RC::SUCCESS;
 }
 
+RC DiskBufferPool::append_data(int64_t &offset, int64_t length, const char *data)
+{
+  RC rc = RC::SUCCESS;
+
+  // 查看file_header中记录的文件末尾位置信息
+  offset = BP_PAGE_SIZE * file_header_->page_count;
+  if (lseek(file_desc_, offset, SEEK_SET) == -1) {
+    LOG_ERROR("Failed to lseek %s at offset %d :%s.", file_name_.c_str(), offset, strerror(errno));
+    return RC::IOERR_SEEK;
+  }
+
+  if (0 != writen(file_desc_, data, length)) {
+    LOG_ERROR("Failed to write text into file due to %s.", offset, file_desc_, strerror(errno));
+    return RC::IOERR_WRITE;
+  }
+  file_header_->page_count += (length + BP_PAGE_SIZE - 1) / BP_PAGE_SIZE;
+
+  return rc;
+}
+
+RC DiskBufferPool::get_data(int64_t offset, int64_t length, char *data)
+{
+  if (lseek(file_desc_, offset, SEEK_SET) == -1) {
+    LOG_ERROR("Failed to lseek %s at offset %d :%s.", file_name_.c_str(), offset, strerror(errno));
+    return RC::IOERR_SEEK;
+  }
+
+  int ret = readn(file_desc_, data, length);
+  if (ret != 0) {
+    LOG_ERROR("Failed to load text from %s, file_desc:%d, due to failed to read data:%s, ret=%d, page count=%d",
+              file_name_.c_str(), file_desc_, strerror(errno), ret, file_header_->allocated_pages);
+    return RC::IOERR_READ;
+  }
+  return RC::SUCCESS;
+}
+
 RC DiskBufferPool::allocate_frame(PageNum page_num, Frame **buffer)
 {
   auto purger = [this](Frame *frame) {

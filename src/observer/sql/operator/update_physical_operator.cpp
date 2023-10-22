@@ -64,9 +64,13 @@ RC UpdatePhysicalOperator::find_target_columns()
       if (value->is_null() && field_meta->nullable()) {
         // ok
       } else if (value->attr_type() != field_meta->type()) {
-        LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
-            table_->name(), fields_[c_idx].c_str(), field_meta->type(), value->attr_type());
-        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        if (TEXTS == field_meta->type() && CHARS == value->attr_type()) {
+
+        } else {
+          LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+                  table_->name(), fields_[c_idx].c_str(), field_meta->type(), value->attr_type());
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
       }
 
       fields_id_.emplace_back(i + sys_field_num);
@@ -74,6 +78,8 @@ RC UpdatePhysicalOperator::find_target_columns()
       break;
     }
   }
+  
+  return RC::SUCCESS;
 }
 
 RC UpdatePhysicalOperator::next()
@@ -150,6 +156,7 @@ RC UpdatePhysicalOperator::construct_new_record(Record &old_record, Record &new_
   std::vector<Value> old_value;
   for (size_t c_idx = 0; c_idx < fields_.size(); c_idx++) {
     Value *value = values_[c_idx];
+    FieldMeta &field_meta = fields_meta_[c_idx];
 
     // 判断 新值与旧值是否相等，缓存旧值，将新值复制到新的record里
     const FieldMeta* null_field = table_->table_meta().null_field();
@@ -163,19 +170,37 @@ RC UpdatePhysicalOperator::construct_new_record(Record &old_record, Record &new_
       // 新值是NULL，旧值不是
       same_data = false;
       new_null_bitmap.set_bit(fields_id_[c_idx]);
-      old_value.emplace_back(fields_meta_[c_idx].type(), old_record.data() + fields_meta_[c_idx].offset(), fields_meta_[c_idx].len());
-    } else if (old_null_bitmap.get_bit(fields_id_[c_idx])) {
-      // 旧值是NULL，新值不是
-      same_data = false;
-      new_null_bitmap.clear_bit(fields_id_[c_idx]);
-      old_value.emplace_back(NULLS, nullptr, 0);
+      old_value.emplace_back(field_meta.type(), old_record.data() + field_meta.offset(), field_meta.len());
     } else {
-      // 二者都不是NULL
-      if (0 != memcmp(old_record.data() + fields_meta_[c_idx].offset(), value->data(), fields_meta_[c_idx].len())) {
+      // 新值不是NULL
+      new_null_bitmap.clear_bit(fields_id_[c_idx]);
+
+      if (old_null_bitmap.get_bit(fields_id_[c_idx])) {
+        // 旧值是NULL
         same_data = false;
-        memcpy(tmp_record_data_ + fields_meta_[c_idx].offset(), value->data(), fields_meta_[c_idx].len());   
+        old_value.emplace_back(NULLS, nullptr, 0);
+      } else {
+        // 都不是NULL
+        if (TEXTS == field_meta.type()) {
+          same_data = false;
+          int64_t position[2];
+          position[1] = value->length();
+          rc = table_->write_text(position[0], position[1], value->data());
+          if (rc != RC::SUCCESS) {
+            LOG_WARN("Failed to write text into table, rc=%s", strrc(rc));
+            return rc;
+          }
+          memcpy(tmp_record_data_ + field_meta.offset(), position, 2 * sizeof(int64_t));
+          old_value.emplace_back(LONGS, old_record.data() + field_meta.offset(), sizeof(int64_t));
+          old_value.emplace_back(LONGS, old_record.data() + field_meta.offset() + sizeof(int64_t), sizeof(int64_t));
+        } else {
+          if (0 != memcmp(old_record.data() + field_meta.offset(), value->data(), field_meta.len())) {
+            same_data = false;
+            memcpy(tmp_record_data_ + field_meta.offset(), value->data(), field_meta.len());   
+          }
+          old_value.emplace_back(field_meta.type(), old_record.data() + field_meta.offset(), field_meta.len());
+        }
       }
-      old_value.emplace_back(fields_meta_[c_idx].type(), old_record.data() + fields_meta_[c_idx].offset(), fields_meta_[c_idx].len());
     }
   }
   if (same_data) {
@@ -197,8 +222,10 @@ RC UpdatePhysicalOperator::construct_old_record(Record &updated_record, Record &
   memcpy(tmp_record_data_, updated_record.data(), table_->table_meta().record_size());
 
   std::vector<Value> &old_value = old_values_.back();
+  int val_idx = 0;
   for (size_t c_idx = 0; c_idx < fields_.size(); c_idx++) {
-    Value *value = &old_value[c_idx];
+    Value *value = &old_value[val_idx++];
+    FieldMeta &field_meta = fields_meta_[c_idx];
 
     // 将旧值复制到 old_record 里
     const FieldMeta* null_field = table_->table_meta().null_field();
@@ -211,7 +238,13 @@ RC UpdatePhysicalOperator::construct_old_record(Record &updated_record, Record &
     } else {
       // 旧值不是NULL
       old_null_bitmap.clear_bit(fields_id_[c_idx]);
-      memcpy(tmp_record_data_ + fields_meta_[c_idx].offset(), value->data(), fields_meta_[c_idx].len());
+      if (TEXTS == field_meta.type()) {
+        memcpy(tmp_record_data_ + field_meta.offset(), value->data(), sizeof(int64_t));
+        value = &old_value[val_idx++];
+        memcpy(tmp_record_data_ + field_meta.offset() + sizeof(int64_t), value->data(), sizeof(int64_t));        
+      } else {
+        memcpy(tmp_record_data_ + field_meta.offset(), value->data(), field_meta.len());
+      }
     }
   }
   

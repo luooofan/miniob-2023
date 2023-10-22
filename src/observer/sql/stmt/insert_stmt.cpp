@@ -60,9 +60,16 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
         continue;
       }
       if (field_type != value_type) {  // TODO try to convert the value type to field type
-        LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+        if (TEXTS == field_type && CHARS == value_type) {
+          if (MAX_TEXT_LENGTH < values[i].length()) {
+            LOG_WARN("Text length:%d, over max_length 65535", values[i].length());
+            return RC::INVALID_ARGUMENT;
+          }
+        } else {
+          LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
             table_name, field_meta->name(), field_type, value_type);
-        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
       }
       if(field_type == CHARS && values[i].length() > field_meta->len()){
           return RC::INVALID_ARGUMENT;
