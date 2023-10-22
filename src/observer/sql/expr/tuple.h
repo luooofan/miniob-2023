@@ -625,8 +625,8 @@ public:
     // 每个 group 迭代完之后计算最终结果
     void finish()
     {
-      // 1. count(*) count(1) count(1+1)
-      if (expr_->is_count_constexpr()) {
+      // 1. count(*) count(1) count(1+1) count(id)
+      if (expr_->get_aggr_func_type() == AGG_COUNT) {
         result_.set_int(count_);
         return;
       }
