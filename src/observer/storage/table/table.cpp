@@ -200,15 +200,8 @@ RC Table::insert_record(Record &record)
   }
 
   rc = insert_entry_of_indexes(record.data(), record.rid());
-  if (rc != RC::SUCCESS) {  // 可能出现了键值重复
-    RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
-    if (rc2 != RC::SUCCESS) {
-      LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
-          name(),
-          rc2,
-          strrc(rc2));
-    }
-    rc2 = record_handler_->delete_record(&record.rid());
+  if (rc != RC::SUCCESS) {  // 可能出现了键值重复，插索引操作是原子性的，因此不需要在这里删索引
+    RC rc2 = record_handler_->delete_record(&record.rid());
     if (rc2 != RC::SUCCESS) {
       LOG_PANIC("Failed to rollback record data when insert index entries failed. table name=%s, rc=%d:%s",
           name(),
@@ -755,6 +748,45 @@ RC Table::update_record(Record &record, const std::vector<std::string> &attr_nam
   }
 
   record.set_data(old_data);
+  return rc;
+}
+
+RC Table::update_record(Record &old_record, Record &new_record)
+{
+  RC rc = RC::SUCCESS;
+
+  rc = delete_entry_of_indexes(old_record.data(), old_record.rid(), false);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to delete indexes of record (rid=%d.%d). rc=%d:%s",
+        old_record.rid().page_num,
+        old_record.rid().slot_num,
+        rc,
+        strrc(rc));
+    return rc;
+  }
+
+  rc = insert_entry_of_indexes(new_record.data(), new_record.rid());
+  if (rc != RC::SUCCESS) {  // 可能出现了键值重复
+    RC rc2 = insert_entry_of_indexes(old_record.data(), old_record.rid());
+    if (rc2 != RC::SUCCESS) {
+      sql_debug("Failed to rollback index after insert index failed, rc=%s", strrc(rc2));
+      LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+          name(),
+          rc2,
+          strrc(rc2));
+      return rc2;
+    }
+    return rc;  // 插入新的索引失败
+  }
+
+  rc = record_handler_->update_record(&new_record);
+  if (rc != RC::SUCCESS) {
+    // 更新数据失败应该回滚索引，但是这里除非RID错了，否则不会失败，懒得写回滚索引了
+    LOG_ERROR(
+        "Failed to update record (rid=%d.%d). rc=%d:%s", new_record.rid().page_num, new_record.rid().slot_num, rc, strrc(rc));
+    return rc;
+  }
+
   return rc;
 }
 

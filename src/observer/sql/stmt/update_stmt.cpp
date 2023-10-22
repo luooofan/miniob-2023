@@ -63,6 +63,14 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
         } else {
           valid = true;
         }
+        // 将不确定长度的 char 改为固定长度的 char
+        if (CHARS == update_field->type()) {
+          char *char_value = (char*)malloc(update_field->len());
+          memset(char_value, 0, update_field->len());
+          memcpy(char_value, update.values[i].data(), update.values[i].length());
+          const_cast<UpdateSqlNode*>(&update)->values[i].set_data(char_value, update_field->len());
+          free(char_value);
+        }        
       }
     }
     if (!valid) {
