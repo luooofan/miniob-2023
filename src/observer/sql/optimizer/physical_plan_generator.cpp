@@ -61,6 +61,7 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
     case LogicalOperatorType::PROJECTION: {
       return create_plan(static_cast<ProjectLogicalOperator &>(logical_operator), oper);
     } break;
+
     case LogicalOperatorType::GROUPBY: {
       return create_plan(static_cast<GroupByLogicalOperator &>(logical_operator), oper);
     } break;
@@ -213,7 +214,6 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
 RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &groupby_oper, unique_ptr<PhysicalOperator> &oper)
 {
   vector<unique_ptr<LogicalOperator>> &child_opers = groupby_oper.children();
-
   unique_ptr<PhysicalOperator> child_phy_oper;
 
   RC rc = RC::SUCCESS;
@@ -225,6 +225,7 @@ RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &groupby_oper, uniq
       return rc;
     }
   }
+
   GroupByPhysicalOperator *groupby_operator = new GroupByPhysicalOperator(groupby_oper.groupby_units(),groupby_oper.agg_exprs(),groupby_oper.field_exprs());
   if (child_phy_oper) {
     groupby_operator->add_child(std::move(child_phy_oper));

@@ -2508,7 +2508,7 @@ yyreduce:
     {
       AggrFuncType funtype = (AggrFuncType)(yyvsp[-3].number);
       //FieldExpr *tmp = new FieldExpr(std::string($3->relation_name),std::string($3->attribute_name));
-      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype,(yyvsp[-1].expression));
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, (yyvsp[-1].expression));
       (yyval.expression) = afexpr;
       (yyval.expression)->set_name(token_name(sql_string, &(yyloc)));
     }
@@ -2525,7 +2525,7 @@ yyreduce:
       }
       AggrFuncType funtype = (AggrFuncType)(yyvsp[-3].number);
       ValueExpr * tmp = new ValueExpr();
-      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype,tmp);
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, tmp);
       afexpr->set_param_star(true);
       (yyval.expression) = afexpr;
       (yyval.expression)->set_name(token_name(sql_string, &(yyloc)));

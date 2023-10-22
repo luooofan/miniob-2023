@@ -496,7 +496,7 @@ public:
     return RC::SUCCESS;
   }
   RC find_cell(const TupleCellSpec &spec, Value &cell) const override
-  { 
+  {
     if(spec.get_agg_type()!= AGGR_FUNC_TYPE_NUM)//是聚集函数
     {
       return find_cell(spec.alias_str(),cell);
@@ -523,10 +523,10 @@ public:
     return aggr_exprs_;
   }
 
-  // const std::vector<Expression *> &get_field_exprs() const
-  // {
-  //   return field_exprs_;
-  // }
+  const std::vector<FieldExpr *> &get_field_exprs() const
+  {
+    return field_exprs_;
+  }
 
   void do_aggregate_first();
 
@@ -536,61 +536,38 @@ public:
 
   void init(std::vector<GroupByUnit *> &units, std::vector<AggrFuncExpr *> &aggr_exprs,std::vector<FieldExpr *> &field_exprs)
   {
+    // TODO 把这几个合成一个
     counts_.resize(aggr_exprs.size());
     all_null_.resize(aggr_exprs.size());
     aggr_results_.resize(aggr_exprs.size());
     aggr_exprs_ = aggr_exprs;
-
+    for(size_t i = 0 ; i < all_null_.size();++i) {
+      all_null_[i] = true;
+    }
 
     field_results_.resize(field_exprs.size());
     // for(GroupByUnit *unit : units)
     // {
     //   field_exprs_.emplace_back(static_cast<FieldExpr*>(unit->expr()));
     // }
-    for(auto *expr:aggr_exprs)
-    {
-      agg_expr_name_.emplace_back(expr->name());
-    }
     field_exprs_ = field_exprs;
-    // for(auto *expr:field_exprs)
-    // {
-    //   field_expr_name_.emplace_back(expr->name());
-    // }
   }
-  int find_index_by_name(std::string expr_name) const
+  size_t find_index_by_name(std::string expr_name) const
   {
-    int idx = -1;
-    for(int i = 0 ; i<agg_expr_name_.size();++i)
-    {
-      if(expr_name == agg_expr_name_[i])
-      {
-        idx = i;
-        return idx;
+    for(size_t i = 0; i < aggr_exprs_.size(); ++i) {
+      if(expr_name == aggr_exprs_[i]->name()) {
+        return i;
       }
     }
-    return idx;
+    return -1;
   }
-  // int find_field_index_by_name(std::string expr_name) const
-  // {
-  //   int idx = -1;
-  //   for(int i = 0 ; i<field_expr_name_.size();++i)
-  //   {
-  //     if(expr_name == field_expr_name_[i])
-  //     {
-  //       idx = i;
-  //       return idx;
-  //     }
-  //   }
-  //   return idx;
-  // }
+
 private:
   int count_ = 0;
   std::vector<bool> all_null_;           // for every aggr expr
   std::vector<int> counts_;              // for every aggr expr
   std::vector<Value> aggr_results_;  // for every aggr expr
   std::vector<Value> field_results_;
-  // std::vector<std::string>field_expr_name_;//对应了每个field_expr的名称
-  std::vector<std::string>agg_expr_name_;//对应了每个聚集函数的名称
   // not own these below
   std::vector<FieldExpr *> field_exprs_;
   std::vector<AggrFuncExpr *> aggr_exprs_;  // only use these AggrFuncExpr's type and field info

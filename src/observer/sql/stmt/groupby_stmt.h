@@ -14,13 +14,8 @@ class FieldMeta;
 class GroupByUnit {
 public:
   GroupByUnit() = default;
-  ~GroupByUnit()
-  {
-    // if (expr_) {
-    //   delete expr_;
-    //   expr_ = nullptr;
-    // }
-  }
+  GroupByUnit(Expression* expr) : expr_(expr) {}
+  ~GroupByUnit() = default;
 
   void set_expr(Expression *expr)
   {
@@ -32,7 +27,7 @@ public:
   }
 
 private:
-  Expression *expr_ = nullptr;
+  Expression *expr_ = nullptr; // 这里是不是只能是字段表达式 而且是独占的 看看能不能改成 unique_ptr
 };
 
 class GroupByStmt : Stmt{
@@ -73,19 +68,19 @@ public:
   {
     field_exprs_ = field_exprs;
   }
-  std::vector<FieldExpr*>&get_field_exprs()
+  std::vector<FieldExpr*>& get_field_exprs()
   {
     return field_exprs_;
   }
 public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-      const GroupBySqlNode *groupby_node, GroupByStmt *&stmt,std::vector<AggrFuncExpr*>&agg_exprs);
+      const GroupBySqlNode *groupby_node, GroupByStmt *&stmt, std::vector<AggrFuncExpr*>&agg_exprs, std::vector<FieldExpr*>& field_exprs);
 
   static RC create_groupby_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
       Expression * expr, GroupByUnit *&groupby_unit);
 
 private:
-  std::vector<GroupByUnit *> groupby_units_;
-  std::vector<AggrFuncExpr *> agg_exprs_;
-  std::vector<FieldExpr *> field_exprs_;
+  std::vector<GroupByUnit *> groupby_units_; // group by clause 这里应该有管理权 考虑改成 unique_ptr
+  std::vector<AggrFuncExpr *> agg_exprs_; // 聚集函数表达式 这里没有管理权 管理权在 projects 中
+  std::vector<FieldExpr *> field_exprs_; // 非聚集函数中的字段表达式 这里没有管理权 管理权在 projects 中
 };

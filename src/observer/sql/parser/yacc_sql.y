@@ -785,7 +785,7 @@ aggr_func_expr:
     {
       AggrFuncType funtype = (AggrFuncType)$1;
       //FieldExpr *tmp = new FieldExpr(std::string($3->relation_name),std::string($3->attribute_name));
-      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype,$3);
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, $3);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));
     }
@@ -798,7 +798,7 @@ aggr_func_expr:
       }
       AggrFuncType funtype = (AggrFuncType)$1;
       ValueExpr * tmp = new ValueExpr();
-      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype,tmp);
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, tmp);
       afexpr->set_param_star(true);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));

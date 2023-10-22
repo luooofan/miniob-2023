@@ -48,7 +48,8 @@ public:
     return field_exprs_;
   }
 private:
-  std::vector<GroupByUnit*>groupby_units_;
-  std::vector<AggrFuncExpr*>agg_exprs_;
-  std::vector<FieldExpr*>field_exprs_;
+  // TODO 这里应该都改成 unique_ptr
+  std::vector<GroupByUnit*> groupby_units_;
+  std::vector<AggrFuncExpr*> agg_exprs_;
+  std::vector<FieldExpr*> field_exprs_;
 };

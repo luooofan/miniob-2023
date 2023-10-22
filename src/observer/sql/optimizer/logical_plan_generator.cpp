@@ -153,7 +153,7 @@ RC LogicalPlanGenerator::create_plan(
   ASSERT(outside_prev_oper, "ERROR!");
   unique_ptr<LogicalOperator> top_oper = std::move(outside_prev_oper);
 
-  {
+  if (select_stmt->filter_stmt()) {
     unique_ptr<LogicalOperator> predicate_oper;
     rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
     if (rc != RC::SUCCESS) {
@@ -165,7 +165,7 @@ RC LogicalPlanGenerator::create_plan(
       top_oper = std::move(predicate_oper);
     }
   }
-  {
+  if (select_stmt->groupby_stmt()) {
     unique_ptr<LogicalOperator> groupby_oper;
     rc = create_plan(select_stmt->groupby_stmt(), groupby_oper);
     if (rc != RC::SUCCESS) {

@@ -45,7 +45,7 @@ enum class ExprType
   COMPARISON,   ///< 需要做比较的表达式
   CONJUNCTION,  ///< 多个表达式使用同一种关系(AND或OR)来联结
   ARITHMETIC,   ///< 算术运算
-  AGGRFUNCTION,
+  AGGRFUNCTION, ///< 聚集函数
 };
 
 /**
@@ -92,31 +92,20 @@ public:
    */
   virtual AttrType value_type() const = 0;
 
-  /**
-   * @brief 检查 FieldExpr
-   * @details 在生成 SelectStmt 的时候调用
-   */
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) {
-      return RC::SUCCESS;
+  virtual void traverse(const std::function<void(Expression*)>& func)
+  {
+    constexpr auto always_true = [](const Expression *) { return true; };
+    this->traverse(func, always_true);
+  }
+  virtual void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter)
+  {
+    if (filter(this)) {
+      func(this);
     }
-
-  /**
-   * @brief 检查是否能下推
-   * @details 在生成 SelectStmt 的时候调用，如果当前表达式树中存在一个 FieldExpr 的 table name 不在 table_map 中就返回 false
-   */
-  virtual bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) {
-    return true;
   }
-  virtual void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)
+  virtual RC traverse_check(const std::function<RC(Expression*)>& check_func)
   {
-    //什么都不做
-  }
-  //返回false 代表该表达式中不存在 AggrFuncExpr
-  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
-  {
-    //什么都不做
-    return false;
+    return check_func(this);
   }
 
   /**
@@ -160,20 +149,8 @@ public:
   RC get_value(const Tuple &tuple, Value &value) const override;
 
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override;
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr);
 
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    return table_map.count(table_name_) != 0;
-  }
-  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs) override
-  {
-    res_exprs.emplace_back(this);
-  }
-  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
-  {
-    //什么都不做
-    return false;
-  }
 private:
   Field field_;
   const std::string table_name_;
@@ -207,32 +184,22 @@ public:
 
   bool get_neg(Value &value)
   {
-    switch (value_.attr_type())
-    {
-    case INTS:{
-        value.set_int(-1 * value_.get_int());
-        return true;
-    }break;
-    case FLOATS:{
-        value.set_float(-1 * value_.get_float());
-        return true;
-    }break;
-    case DOUBLES:{
-        value.set_double(-1 * value_.get_double());
-        return true;
-    }break;
-    default:
-      break;
+    switch (value_.attr_type()) {
+      case INTS:{
+          value.set_int(-1 * value_.get_int());
+          return true;
+      }break;
+      case FLOATS:{
+          value.set_float(-1 * value_.get_float());
+          return true;
+      }break;
+      case DOUBLES:{
+          value.set_double(-1 * value_.get_double());
+          return true;
+      }break;
+      default:
+        break;
     }
-    return false;
-  }
-  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
-  {
-    
-  }
-  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
-  {
-    //什么都不做
     return false;
   }
 private:
@@ -261,22 +228,24 @@ public:
 
   std::unique_ptr<Expression> &child() { return child_; }
 
-  RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
-      return child_->check_field(table_map, tables, db, default_table);
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      child_->traverse(func, filter);
+      func(this);
     }
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    return child_->check_can_push_down(table_map);
   }
-  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
-    //什么都不做
+    if (RC rc = check_func(this); RC::SUCCESS != rc) {
+      return rc;
+    } else if (rc = child_->traverse_check(check_func); RC::SUCCESS != rc) {
+      return rc;
+    }
+    return RC::SUCCESS;
   }
-  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
-  {
-    //什么都不做
-    return false;
-  }
+
 private:
   RC cast(const Value &value, Value &cast_value) const;
 
@@ -318,27 +287,35 @@ public:
    */
   RC compare_value(const Value &left, const Value &right, bool &value) const;
 
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
-      if (RC rc = left_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-        return rc;
-      } else if (rc = right_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-        return rc;
-      }
-      return RC::SUCCESS;
-    }
+  bool has_rhs() const
+  {
+    // return right_;
+    // 虽然 IS_[NOT]_NULL 的情况下 rhs 是 null ValueExpr 但仍然提供这个接口
+    return comp_ != IS_NULL && comp_ != IS_NOT_NULL;
+  }
 
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    return left_->check_can_push_down(table_map) && right_->check_can_push_down(table_map);
-  }
-  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
-    //什么都不做
+    if (filter(this)) {
+      left_->traverse(func, filter);
+      if (has_rhs()) {
+        right_->traverse(func, filter);
+      }
+      func(this);
+    }
   }
-  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
-    //什么都不做
-    return false;
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
+      return rc;
+    } else if (has_rhs() && RC::SUCCESS != (rc = right_->traverse_check(check_func))) {
+      return rc;
+    }
+    return RC::SUCCESS;
   }
 private:
   CompOp comp_;
@@ -374,33 +351,30 @@ public:
 
   std::vector<std::unique_ptr<Expression>> &children() { return children_; }
 
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
-      for (auto& expr : children_) {
-        if (RC rc = expr->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-          return rc;
-        }
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      for (auto& child : children_) {
+        child->traverse(func, filter);
       }
-      return RC::SUCCESS;
+      func(this);
     }
+  }
 
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    for (auto& expr : children_) {
-      if (!expr->check_can_push_down(table_map)) {
-        return false;
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    }
+    for (auto& child : children_) {
+      if (RC::SUCCESS != (rc = child->traverse_check(check_func))) {
+        return rc;
       }
     }
-    return true;
+    return RC::SUCCESS;
   }
-  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
-  {
-    //什么都不做
-  }
-  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
-  {
-    //什么都不做
-    return false;
-  }
+
 private:
   Type conjunction_type_;
   std::vector<std::unique_ptr<Expression>> children_;
@@ -438,48 +412,34 @@ public:
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
 
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
-      RC rc = RC::SUCCESS;
-      if (rc = left_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-        return rc;
-      }
-      if (arithmetic_type_ != Type::NEGATIVE) {
-        ASSERT(right_, "ERROR!");
-        if (rc = right_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-          return rc;
-        }
-      }
-      return RC::SUCCESS;
-    }
+  bool has_rhs() const
+  {
+    // return arithmetic_type_ != Type::NEGATIVE; // logical
+    return right_ != nullptr; // physical
+  }
 
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    if (!left_->check_can_push_down(table_map)) {
-      return false;
-    }
-    if (arithmetic_type_ != Type::NEGATIVE) {
-      ASSERT(right_, "ERROR!");
-      return right_->check_can_push_down(table_map);
-    }
-    return true;
-  }
-  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
-    if(left_)
-      left_->get_fieldexprs_without_aggrfunc(res_exprs);
-    if(right_)
-      right_->get_fieldexprs_without_aggrfunc(res_exprs);
+    if (filter(this)) {
+      left_->traverse(func, filter);
+      if (has_rhs()) {
+        right_->traverse(func, filter);
+      }
+      func(this);
+    }
   }
-  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
-    bool l = false;
-    bool r = false;
-    if(left_)
-      l= left_->get_aggrexpr(res_exprs);
-    
-    if(right_)
-     r = right_->get_aggrexpr(res_exprs);
-    return l || r;
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
+      return rc;
+    } else if (has_rhs() && RC::SUCCESS != (rc = right_->traverse_check(check_func))) {
+      return rc;
+    }
+    return RC::SUCCESS;
   }
 private:
   RC calc_value(const Value &left_value, const Value &right_value, Value &value) const;
@@ -596,18 +556,27 @@ public:
     type_ = type;
   }
 
-  // TODO
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override;
-  void get_fieldexprs_without_aggrfunc(std::vector<FieldExpr*> &res_exprs)override
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
-    //什么都不做
+    if (filter(this)) {
+      if (!param_is_star_) {
+        param_->traverse(func, filter);
+      }
+      func(this);
+    }
   }
-  virtual bool get_aggrexpr(std::vector<AggrFuncExpr*> &res_exprs)
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
-    res_exprs.emplace_back(this);
-    return true;
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    } else if (!param_is_star_ && RC::SUCCESS != (rc = param_->traverse_check(check_func))) {
+      return rc;
+    }
+    return rc;
   }
+
 private:
   AggrFuncType type_;
   const FieldExpr *field_ = nullptr;  // don't own this. keep const.

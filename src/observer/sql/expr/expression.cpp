@@ -418,7 +418,6 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
   // set field_
   field_ = Field(table, field_meta);
   // set name
-
   bool is_single_table = (tables.size() == 1);
   if(is_single_table) {
     set_name(field_name_);
@@ -454,6 +453,7 @@ std::string AggrFuncExpr::get_func_name() const
   }
   return "unknown_aggr_fun";
 }
+
 AttrType AggrFuncExpr::value_type() const
 {
   switch (type_) {
@@ -475,8 +475,6 @@ AttrType AggrFuncExpr::value_type() const
   return UNDEFINED;
 }
 
-
-
 //Project 算子的cell_at 会调用该函数取得聚集函数最后计算的结果,传入的Tuple 就是gropuby 中的 grouptuple
 RC AggrFuncExpr::get_value(const Tuple &tuple, Value &cell) const
 {
@@ -484,29 +482,4 @@ RC AggrFuncExpr::get_value(const Tuple &tuple, Value &cell) const
   spec.set_agg_type(get_aggr_func_type());
   spec.set_alias(name());
   return tuple.find_cell(spec,cell);
-}
-
-// TODO(check field)
-//检查表达式中出现的 表,列 是否存在
-RC AggrFuncExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table)
-{
-  //1.参数如果为 * ,则只能是 count
-  if(param_is_star_ && type_ != AggrFuncType::AGG_COUNT)
-  {
-    LOG_INFO("only support count(*)");
-    return RC::INVALID_ARGUMENT;
-  }
-  if(param_is_star_ && type_ == AggrFuncType::AGG_COUNT)
-  {
-    return RC::SUCCESS;
-  }
-  //2.参数不为 * ,检查是否合法
-  ASSERT(!param_is_star_, "ERROR!");
-  RC rc = param_->check_field(table_map,tables,db,default_table);
-  if(rc !=  RC::SUCCESS)
-  {
-    return rc;
-  }
-  return RC::SUCCESS;
 }
