@@ -54,6 +54,7 @@ RC FieldMeta::init(const char *name, AttrType attr_type, int attr_offset, int at
   attr_offset_ = attr_offset;
   visible_ = visible;
   nullable_ = nullable;
+  if (TEXTS == attr_type) { attr_len_ = TEXT_FIELD_LENGTH; }
 
   LOG_INFO("Init a field with name=%s", name);
   return RC::SUCCESS;

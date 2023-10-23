@@ -89,7 +89,7 @@ RC TableMeta::init(int32_t table_id, const char *name, int field_num, const Attr
       return rc;
     }
 
-    field_offset += attr_info.length;
+    field_offset += fields_[i + sys_field_num].len();
   }
 
   record_size_ = field_offset;

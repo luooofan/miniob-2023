@@ -26,6 +26,9 @@ static constexpr PageNum BP_HEADER_PAGE   = 0;
 static constexpr const int BP_PAGE_SIZE = (1 << 13);
 static constexpr const int BP_PAGE_DATA_SIZE = (BP_PAGE_SIZE - sizeof(PageNum) - sizeof(LSN));
 
+// TEXT page 里面一个slot大小为64字节
+static constexpr const int BP_TEXT_SLOT_SIZE = 64;
+
 /**
  * @brief 表示一个页面，可能放在内存或磁盘上
  * @ingroup BufferPool
