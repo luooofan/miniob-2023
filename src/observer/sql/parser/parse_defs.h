@@ -89,8 +89,8 @@ struct GroupBySqlNode
  */
 struct InnerJoinSqlNode
 {
-  std::string base_relation;
-  std::vector<std::string> join_relations;
+  std::pair<std::string, std::string> base_relation;
+  std::vector<std::pair<std::string, std::string>> join_relations;
   std::vector<std::vector<ConditionSqlNode>> conditions;
 };
 

@@ -119,8 +119,15 @@ public:
   virtual std::string name() const { return name_; }
   virtual void set_name(std::string name) { name_ = name; }
 
+  /**
+   * @brief 表达式的别名
+   */
+  virtual std::string alias() const { return alias_; }
+  virtual void set_alias(std::string alias) { alias_ = alias; }
+
 private:
-  std::string  name_;
+  std::string name_{};
+  std::string alias_{};
 };
 
 /**
@@ -154,6 +161,7 @@ public:
   RC get_value(const Tuple &tuple, Value &value) const override;
 
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::unordered_map<std::string, std::string> & table_alias_map,
     const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr);
 
   std::unique_ptr<Expression> deep_copy() const override

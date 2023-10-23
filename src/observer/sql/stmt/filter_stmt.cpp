@@ -76,7 +76,7 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
       return sysfunc_expr->check_param_type_and_number();
     } else if (expr->type() == ExprType::FIELD) {
       FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
-      return field_expr->check_field(*tables, table_arr, db, default_table);
+      return field_expr->check_field(*tables, {}, table_arr, db, default_table);
     }
     return RC::SUCCESS;
   };

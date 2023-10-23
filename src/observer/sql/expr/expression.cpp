@@ -389,8 +389,10 @@ RC ArithmeticExpr::try_get_value(Value &value) const
   return calc_value(left_value, right_value, value);
 }
 
-//检查表达式中出现的 表,列 是否存在
+// 检查表达式中出现的 表,列 是否存在
+// NOTE: 是针对 projects 中的 FieldExpr 写的 conditions 中的也可以用 但是处理之后的 name alias 是无效的
 RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::unordered_map<std::string, std::string> & table_alias_map,
     const std::vector<Table *> &tables, Db *db, Table* default_table)
 {
   ASSERT(field_name_ != "*", "ERROR!");
@@ -413,6 +415,8 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
     table = default_table ? default_table : tables[0];
   }
   ASSERT(nullptr != table, "ERROR!");
+  // set table_name
+  table_name = table->name();
   // check field
   const FieldMeta *field_meta = table->table_meta().field(field_name);
   if (nullptr == field_meta) {
@@ -421,12 +425,25 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
   }
   // set field_
   field_ = Field(table, field_meta);
-  // set name
+  // set name 应该没用了 但是保留它
   bool is_single_table = (tables.size() == 1);
   if(is_single_table) {
     set_name(field_name_);
   } else {
     set_name(table_name_ + "." + field_name_);
+  }
+  // set alias
+  if (alias().empty()) {
+    if (is_single_table) {
+      set_alias(field_name_);
+    } else {
+      auto iter = table_alias_map.find(table_name_);
+      if (iter != table_alias_map.end()) {
+        set_alias(iter->second + "." + field_name_);
+      } else {
+        set_alias(table_name_ + "." + field_name_);
+      }
+    }
   }
   return RC::SUCCESS;
 }

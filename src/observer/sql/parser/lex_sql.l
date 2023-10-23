@@ -131,6 +131,7 @@ NULL                                    RETURN_TOKEN(NULL_T);
 INNER                                   RETURN_TOKEN(INNER);
 JOIN                                    RETURN_TOKEN(JOIN);
 UNIQUE                                  RETURN_TOKEN(UNIQUE);
+AS                                      RETURN_TOKEN(AS);
 {ID}                                    yylval->string=strdup(yytext); RETURN_TOKEN(ID);
 "("                                     RETURN_TOKEN(LBRACE);
 ")"                                     RETURN_TOKEN(RBRACE);
