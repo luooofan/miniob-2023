@@ -147,7 +147,6 @@ RC UpdatePhysicalOperator::next()
 RC UpdatePhysicalOperator::construct_new_record(Record &old_record, Record &new_record)
 {
   RC rc = RC::SUCCESS;
-  bool same_data = true;    // 标识当前行数据更新后，是否与更前相同
 
   new_record.set_rid(old_record.rid());
   new_record.set_data(tmp_record_data_);
@@ -168,42 +167,37 @@ RC UpdatePhysicalOperator::construct_new_record(Record &old_record, Record &new_
       old_value.emplace_back(NULLS, nullptr, 0);
     } else if (value->is_null()) {
       // 新值是NULL，旧值不是
-      same_data = false;
       new_null_bitmap.set_bit(fields_id_[c_idx]);
       old_value.emplace_back(field_meta.type(), old_record.data() + field_meta.offset(), field_meta.len());
     } else {
       // 新值不是NULL
       new_null_bitmap.clear_bit(fields_id_[c_idx]);
 
-      if (old_null_bitmap.get_bit(fields_id_[c_idx])) {
-        // 旧值是NULL
-        same_data = false;
-        old_value.emplace_back(NULLS, nullptr, 0);
-      } else {
-        // 都不是NULL
-        if (TEXTS == field_meta.type()) {
-          same_data = false;
-          int64_t position[2];
-          position[1] = value->length();
-          rc = table_->write_text(position[0], position[1], value->data());
-          if (rc != RC::SUCCESS) {
-            LOG_WARN("Failed to write text into table, rc=%s", strrc(rc));
-            return rc;
-          }
-          memcpy(tmp_record_data_ + field_meta.offset(), position, 2 * sizeof(int64_t));
-          old_value.emplace_back(LONGS, old_record.data() + field_meta.offset(), sizeof(int64_t));
-          old_value.emplace_back(LONGS, old_record.data() + field_meta.offset() + sizeof(int64_t), sizeof(int64_t));
-        } else {
-          if (0 != memcmp(old_record.data() + field_meta.offset(), value->data(), field_meta.len())) {
-            same_data = false;
-            memcpy(tmp_record_data_ + field_meta.offset(), value->data(), field_meta.len());   
-          }
-          old_value.emplace_back(field_meta.type(), old_record.data() + field_meta.offset(), field_meta.len());
+      if (TEXTS == field_meta.type()) {
+        int64_t position[2];
+        position[1] = value->length();
+        rc = table_->write_text(position[0], position[1], value->data());
+        if (rc != RC::SUCCESS) {
+          LOG_WARN("Failed to write text into table, rc=%s", strrc(rc));
+          return rc;
         }
+        memcpy(tmp_record_data_ + field_meta.offset(), position, 2 * sizeof(int64_t));       
+      } else {
+        memcpy(tmp_record_data_ + field_meta.offset(), value->data(), field_meta.len());   
+      }
+
+      if (old_null_bitmap.get_bit(fields_id_[c_idx])) {
+        old_value.emplace_back(NULLS, nullptr, 0);
+      } else if (TEXTS == field_meta.type()) {
+        old_value.emplace_back(LONGS, old_record.data() + field_meta.offset(), sizeof(int64_t));
+        old_value.emplace_back(LONGS, old_record.data() + field_meta.offset() + sizeof(int64_t), sizeof(int64_t));
+      } else {
+        old_value.emplace_back(field_meta.type(), old_record.data() + field_meta.offset(), field_meta.len());
       }
     }
   }
-  if (same_data) {
+  // 比较整行数据
+  if (0 == memcmp(old_record.data(), tmp_record_data_, table_->table_meta().record_size())) {
     LOG_WARN("update old value equals new value, skip this record");
     return RC::RECORD_DUPLICATE_KEY;
   }

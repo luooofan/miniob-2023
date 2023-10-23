@@ -58,7 +58,7 @@ Value::Value(bool val)
 }
 Value::Value(int64_t val)
 {
-  set_boolean(val);
+  set_long(val);
 }
 Value::Value(const char *s, int len /*= 0*/)
 {
