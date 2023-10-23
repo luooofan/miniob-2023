@@ -94,8 +94,27 @@ public:
   void set_value(const Value &value);
   std::string to_string() const;
 
+  static const Value &max(const Value &a, const Value &b);
+  static const Value &min(const Value &a, const Value &b);
+  static const Value add(const Value &left, const Value &right);
+  static const Value div(const Value &left, const Value &right);
+
+  void add(const Value& rhs) {
+    *this = Value::add(*this, rhs);
+
+  }
+  void div(const Value& rhs) {
+    *this = Value::div(*this, rhs);
+  }
+
   int compare(const Value &other) const;
 
+  bool operator<(const Value &other) {
+    return compare(other) < 0;
+  }
+  bool operator>(const Value &other) {
+    return compare(other) > 0;
+  }
   const char *data() const;
   int length() const
   {

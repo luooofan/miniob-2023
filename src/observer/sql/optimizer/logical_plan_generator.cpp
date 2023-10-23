@@ -25,6 +25,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/project_logical_operator.h"
 #include "sql/operator/explain_logical_operator.h"
 #include "sql/operator/update_logical_operator.h"
+#include "sql/operator/groupby_logical_operator.h"
 
 #include "sql/stmt/stmt.h"
 #include "sql/stmt/calc_stmt.h"
@@ -148,26 +149,42 @@ RC LogicalPlanGenerator::create_plan(
     }
   }
 
-  unique_ptr<LogicalOperator> predicate_oper;
-  rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
-  if (rc != RC::SUCCESS) {
-    LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
-    return rc;
-  }
+  // set top oper
+  ASSERT(outside_prev_oper, "ERROR!");
+  unique_ptr<LogicalOperator> top_oper = std::move(outside_prev_oper);
 
-  unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(std::move(select_stmt->projects())));
-  if (predicate_oper) {
-    if (outside_prev_oper) {
-      predicate_oper->add_child(std::move(outside_prev_oper));
+  if (select_stmt->filter_stmt()) {
+    unique_ptr<LogicalOperator> predicate_oper;
+    rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
+      return rc;
     }
-    project_oper->add_child(std::move(predicate_oper));
-  } else {
-    if (outside_prev_oper) {
-      project_oper->add_child(std::move(outside_prev_oper));
+    if (predicate_oper) {
+      predicate_oper->add_child(std::move(top_oper));
+      top_oper = std::move(predicate_oper);
     }
   }
+  if (select_stmt->groupby_stmt()) {
+    unique_ptr<LogicalOperator> groupby_oper;
+    rc = create_plan(select_stmt->groupby_stmt(), groupby_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create groupby logical plan. rc=%s", strrc(rc));
+      return rc;
+    }
+    if(groupby_oper){
+      groupby_oper->add_child(std::move(top_oper));
+      top_oper = std::move(groupby_oper);
+    }
+  }
+  {
+    unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(std::move(select_stmt->projects())));
+    ASSERT(project_oper,"ERROR!");
+    project_oper->add_child(std::move(top_oper));
+    top_oper = std::move(project_oper);
+  }
 
-  logical_operator.swap(project_oper);
+  logical_operator.swap(top_oper);
   return RC::SUCCESS;
 }
 
@@ -191,6 +208,21 @@ RC LogicalPlanGenerator::create_plan(
   }
 
   logical_operator = cmp_exprs2predicate_logic_oper(std::move(cmp_exprs));
+  return RC::SUCCESS;
+}
+
+RC LogicalPlanGenerator::create_plan(GroupByStmt *group_by_stmt, unique_ptr<LogicalOperator> &logical_operator)
+{
+  if (group_by_stmt == nullptr) {
+    logical_operator = nullptr;
+    return RC::SUCCESS;
+  }
+
+  unique_ptr<LogicalOperator> groupby_oper(
+    new GroupByLogicalOperator(std::move(group_by_stmt->get_groupby_fields()),
+                               std::move(group_by_stmt->get_agg_exprs()),
+                               std::move(group_by_stmt->get_field_exprs())));
+  logical_operator = std::move(groupby_oper);
   return RC::SUCCESS;
 }
 

@@ -51,7 +51,8 @@ class Db;
   DEFINE_ENUM_ITEM(EXIT)            \
   DEFINE_ENUM_ITEM(EXPLAIN)         \
   DEFINE_ENUM_ITEM(PREDICATE)       \
-  DEFINE_ENUM_ITEM(SET_VARIABLE)
+  DEFINE_ENUM_ITEM(SET_VARIABLE)    \
+  DEFINE_ENUM_ITEM(GROUPBY)
 
 enum class StmtType {
   #define DEFINE_ENUM_ITEM(name)  name,

@@ -44,6 +44,7 @@ enum class ExprType
   COMPARISON,   ///< 需要做比较的表达式
   CONJUNCTION,  ///< 多个表达式使用同一种关系(AND或OR)来联结
   ARITHMETIC,   ///< 算术运算
+  AGGRFUNCTION, ///< 聚集函数
 };
 
 /**
@@ -89,22 +90,27 @@ public:
    */
   virtual AttrType value_type() const = 0;
 
-  /**
-   * @brief 检查 FieldExpr
-   * @details 在生成 SelectStmt 的时候调用
-   */
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) {
-      return RC::SUCCESS;
-    }
-
-  /**
-   * @brief 检查是否能下推
-   * @details 在生成 SelectStmt 的时候调用，如果当前表达式树中存在一个 FieldExpr 的 table name 不在 table_map 中就返回 false
-   */
-  virtual bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) {
-    return true;
+  virtual void traverse(const std::function<void(Expression*)>& func)
+  {
+    constexpr auto always_true = [](const Expression *) { return true; };
+    this->traverse(func, always_true);
   }
+
+  // 带条件的 后序遍历 dfs
+  virtual void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter)
+  {
+    if (filter(this)) {
+      func(this);
+    }
+  }
+
+  // 先序遍历 检查
+  virtual RC traverse_check(const std::function<RC(Expression*)>& check_func)
+  {
+    return check_func(this);
+  }
+
+  virtual std::unique_ptr<Expression> deep_copy() const = 0;
 
   /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
@@ -147,11 +153,13 @@ public:
   RC get_value(const Tuple &tuple, Value &value) const override;
 
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override;
+    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr);
 
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    return table_map.count(table_name_) != 0;
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    return std::unique_ptr<FieldExpr>(new FieldExpr(*this));
   }
+
 private:
   Field field_;
   const std::string table_name_;
@@ -185,25 +193,30 @@ public:
 
   bool get_neg(Value &value)
   {
-    switch (value_.attr_type())
-    {
-    case INTS:{
-        value.set_int(-1 * value_.get_int());
-        return true;
-    }break;
-    case FLOATS:{
-        value.set_float(-1 * value_.get_float());
-        return true;
-    }break;
-    case DOUBLES:{
-        value.set_double(-1 * value_.get_double());
-        return true;
-    }break;
-    default:
-      break;
+    switch (value_.attr_type()) {
+      case INTS:{
+          value.set_int(-1 * value_.get_int());
+          return true;
+      }break;
+      case FLOATS:{
+          value.set_float(-1 * value_.get_float());
+          return true;
+      }break;
+      case DOUBLES:{
+          value.set_double(-1 * value_.get_double());
+          return true;
+      }break;
+      default:
+        break;
     }
     return false;
   }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    return std::unique_ptr<ValueExpr>(new ValueExpr(*this));
+  }
+
 private:
   Value value_;
 };
@@ -230,12 +243,29 @@ public:
 
   std::unique_ptr<Expression> &child() { return child_; }
 
-  RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
-      return child_->check_field(table_map, tables, db, default_table);
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      child_->traverse(func, filter);
+      func(this);
     }
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    return child_->check_can_push_down(table_map);
+  }
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    if (RC rc = check_func(this); RC::SUCCESS != rc) {
+      return rc;
+    } else if (rc = child_->traverse_check(check_func); RC::SUCCESS != rc) {
+      return rc;
+    }
+    return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    auto new_expr = std::make_unique<CastExpr>(child_->deep_copy(), cast_type_);
+    new_expr->set_name(name());
+    return new_expr;
   }
 
 private:
@@ -279,18 +309,47 @@ public:
    */
   RC compare_value(const Value &left, const Value &right, bool &value) const;
 
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
-      if (RC rc = left_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-        return rc;
-      } else if (rc = right_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-        return rc;
-      }
-      return RC::SUCCESS;
-    }
+  bool has_rhs() const
+  {
+    // return right_;
+    // 虽然 IS_[NOT]_NULL 的情况下 rhs 是 null ValueExpr 但仍然提供这个接口
+    return comp_ != IS_NULL && comp_ != IS_NOT_NULL;
+  }
 
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    return left_->check_can_push_down(table_map) && right_->check_can_push_down(table_map);
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      left_->traverse(func, filter);
+      if (has_rhs()) {
+        right_->traverse(func, filter);
+      }
+      func(this);
+    }
+  }
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
+      return rc;
+    } else if (has_rhs() && RC::SUCCESS != (rc = right_->traverse_check(check_func))) {
+      return rc;
+    }
+    return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::unique_ptr<Expression> new_left = left_ ->deep_copy();
+    std::unique_ptr<Expression> new_right;
+    if (right_) { // NOTE: not has_rhs
+      new_right = right_->deep_copy();
+    }
+    auto new_expr = std::make_unique<ComparisonExpr>(comp_, std::move(new_left), std::move(new_right));
+    new_expr->set_name(name());
+    return new_expr;
   }
 
 private:
@@ -327,23 +386,39 @@ public:
 
   std::vector<std::unique_ptr<Expression>> &children() { return children_; }
 
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
-      for (auto& expr : children_) {
-        if (RC rc = expr->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-          return rc;
-        }
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      for (auto& child : children_) {
+        child->traverse(func, filter);
       }
-      return RC::SUCCESS;
+      func(this);
     }
+  }
 
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    for (auto& expr : children_) {
-      if (!expr->check_can_push_down(table_map)) {
-        return false;
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    }
+    for (auto& child : children_) {
+      if (RC::SUCCESS != (rc = child->traverse_check(check_func))) {
+        return rc;
       }
     }
-    return true;
+    return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_children;
+    for (auto& child : children_) {
+      new_children.emplace_back(child->deep_copy());
+    }
+    auto new_expr = std::make_unique<ConjunctionExpr>(conjunction_type_, std::move(new_children));
+    new_expr->set_name(name());
+    return new_expr;
   }
 
 private:
@@ -383,30 +458,46 @@ public:
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
 
-  virtual RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr) override {
-      RC rc = RC::SUCCESS;
-      if (rc = left_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-        return rc;
-      }
-      if (arithmetic_type_ != Type::NEGATIVE) {
-        ASSERT(right_, "ERROR!");
-        if (rc = right_->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-          return rc;
-        }
-      }
-      return RC::SUCCESS;
-    }
+  bool has_rhs() const
+  {
+    // return arithmetic_type_ != Type::NEGATIVE; // logical
+    return right_ != nullptr; // physical
+  }
 
-  bool check_can_push_down(const std::unordered_map<std::string, Table *> &table_map) override {
-    if (!left_->check_can_push_down(table_map)) {
-      return false;
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      left_->traverse(func, filter);
+      if (has_rhs()) {
+        right_->traverse(func, filter);
+      }
+      func(this);
     }
-    if (arithmetic_type_ != Type::NEGATIVE) {
-      ASSERT(right_, "ERROR!");
-      return right_->check_can_push_down(table_map);
+  }
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
+      return rc;
+    } else if (has_rhs() && RC::SUCCESS != (rc = right_->traverse_check(check_func))) {
+      return rc;
     }
-    return true;
+    return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::unique_ptr<Expression> new_left = left_ ->deep_copy();
+    std::unique_ptr<Expression> new_right;
+    if (right_) { // NOTE: not has_rhs
+      new_right = right_->deep_copy();
+    }
+    auto new_expr = std::make_unique<ArithmeticExpr>(arithmetic_type_, std::move(new_left), std::move(new_right));
+    new_expr->set_name(name());
+    return new_expr;
   }
 
 private:
@@ -417,6 +508,7 @@ private:
   std::unique_ptr<Expression> left_;
   std::unique_ptr<Expression> right_;
 };
+
 
 static bool exp2value(Expression * exp,Value & value)
 {
@@ -439,3 +531,87 @@ static bool exp2value(Expression * exp,Value & value)
   }
   return false;
 }
+
+class AggrFuncExpr : public Expression {
+public:
+  AggrFuncExpr(AggrFuncType type, Expression *param);
+  AggrFuncExpr(AggrFuncType type, std::unique_ptr<Expression> param);
+  virtual ~AggrFuncExpr() = default;
+
+  ExprType type() const override
+  {
+    return ExprType::AGGRFUNCTION;
+  }
+  // void set_param_constexpr(bool flag)
+  // {
+  //   param_is_constexpr_ = flag;
+  // }
+  std::unique_ptr<Expression> &get_param()
+  {
+    return param_;
+  }
+  const std::unique_ptr<Expression> &get_param() const
+  {
+    return param_;
+  }
+  RC get_value(const Tuple &tuple, Value &value) const override;
+
+  std::string get_func_name() const;
+
+  AttrType value_type() const override;
+  AggrFuncType get_aggr_func_type() const
+  {
+    return type_;
+  }
+
+  // count(*) count(1) count(1+1) 需要特殊处理 null
+  bool is_count_constexpr() const {
+    if (type_ == AggrFuncType::AGG_COUNT && param_is_constexpr_) {
+      return true;
+    }
+    return false;
+  }
+
+  void set_aggr_fun_type(AggrFuncType type)
+  {
+    type_ = type;
+  }
+
+  // 聚集函数表达式的 traverse[_check] 需要特殊对待 目前如果参数是常量表达式就不进行遍历
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      if (!param_is_constexpr_) {
+        param_->traverse(func, filter);
+      }
+      func(this);
+    }
+  }
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    } else if (!param_is_constexpr_ && RC::SUCCESS != (rc = param_->traverse_check(check_func))) {
+      return rc;
+    }
+    return rc;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::unique_ptr<Expression> new_param;
+    if (param_) {
+      new_param = param_->deep_copy();
+    }
+    auto new_expr = std::make_unique<AggrFuncExpr>(type_, std::move(new_param));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
+private:
+  AggrFuncType type_;
+  std::unique_ptr<Expression> param_;
+  bool param_is_constexpr_ = false;
+};

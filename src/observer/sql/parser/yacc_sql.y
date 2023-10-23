@@ -109,6 +109,11 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         NOT
         LIKE
         UNIQUE
+        AGGR_MAX
+        AGGR_MIN
+        AGGR_SUM
+        AGGR_AVG
+        AGGR_COUNT
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -164,6 +169,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <condition_list>      condition_list
 %type <expression_list>     select_attr
 %type <expression>          expression
+%type <expression>          aggr_func_expr
+%type <number>              aggr_func_type
 %type <expression_list>     expression_list
 %type <update_kv_list>      update_kv_list
 %type <update_kv>           update_kv
@@ -537,8 +544,7 @@ value:
       std::string str(tmp);
       Value * value = new Value();
       int date;
-      if(string_to_date(str,date) < 0)
-      {
+      if(string_to_date(str,date) < 0) {
         yyerror(&@$,sql_string,sql_result,scanner,"date invaid",true);
         YYERROR;
       }
@@ -751,6 +757,48 @@ expression:
       $$ = new FieldExpr($1->relation_name, $1->attribute_name);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
+    }
+    |aggr_func_expr{
+      $$ = $1;
+    }
+    ;
+aggr_func_type:
+    AGGR_MAX {
+      $$ = AggrFuncType::AGG_MAX;
+    }
+    | AGGR_MIN {
+      $$ = AggrFuncType::AGG_MIN;
+    }
+    | AGGR_SUM {
+      $$ = AggrFuncType::AGG_SUM;
+    }
+    | AGGR_AVG {
+      $$ = AggrFuncType::AGG_AVG;
+    }
+    | AGGR_COUNT {
+      $$ = AggrFuncType::AGG_COUNT;
+    }
+    ;
+aggr_func_expr:
+    aggr_func_type LBRACE expression RBRACE
+    {
+      AggrFuncType funtype = (AggrFuncType)$1;
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, $3);
+      $$ = afexpr;
+      $$->set_name(token_name(sql_string, &@$));
+    }
+    | aggr_func_type LBRACE '*' RBRACE
+    {
+      if($1 != AggrFuncType::AGG_COUNT) {
+        yyerror(&@$, sql_string, sql_result, scanner, "only support count(*)");
+        YYERROR;
+      }
+      // regard count(*) as count(1)
+      AggrFuncType funtype = (AggrFuncType)$1;
+      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, new ValueExpr(Value(1)));
+      // afexpr->set_param_constexpr(true);
+      $$ = afexpr;
+      $$->set_name(token_name(sql_string, &@$));
     }
     ;
 

@@ -70,13 +70,18 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
   });
 
   const std::vector<Table *> table_arr; // 因为条件表达式里的 FieldExpr 一定是 t1.c1 所以传入个空的 table vector 就行
-  rc = condition.left_expr->check_field(*tables, table_arr, db, default_table);
-  if(rc != RC::SUCCESS ) {
+  auto check_field = [&tables, &table_arr, &db, &default_table](Expression *expr) {
+    if (expr->type() == ExprType::FIELD) {
+      FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
+      return field_expr->check_field(*tables, table_arr, db, default_table);
+    }
+    return RC::SUCCESS;
+  };
+  if (rc = condition.left_expr->traverse_check(check_field); rc != RC::SUCCESS) {
     LOG_WARN("filter_stmt check_field lhs expression error");
     return rc;
   }
-  rc = condition.right_expr->check_field(*tables, table_arr, db, default_table);
-  if(rc != RC::SUCCESS) {
+  if (rc = condition.right_expr->traverse_check(check_field); rc != RC::SUCCESS) {
     LOG_WARN("filter_stmt check_field rhs expression error");
     return rc;
   }

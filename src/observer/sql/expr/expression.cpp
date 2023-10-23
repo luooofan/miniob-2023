@@ -423,6 +423,73 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
     set_name(field_name_);
   } else {
     set_name(table_name_ + "." + field_name_);
-  }  
+  }
   return RC::SUCCESS;
+}
+
+
+AggrFuncExpr::AggrFuncExpr(AggrFuncType type, Expression *param)
+    : AggrFuncExpr(type, std::unique_ptr<Expression>(param))
+{}
+AggrFuncExpr::AggrFuncExpr(AggrFuncType type, unique_ptr<Expression> param)
+    : type_(type), param_(std::move(param))
+{
+  //
+  auto check_is_constexpr = [](const Expression* expr) -> RC {
+    if (expr->type() == ExprType::FIELD) {
+      return RC::INTERNAL;
+    }
+    return RC::SUCCESS;
+  };
+  if (RC::SUCCESS == param_->traverse_check(check_is_constexpr)) {
+    param_is_constexpr_ = true;
+  }
+}
+
+std::string AggrFuncExpr::get_func_name() const
+{
+  switch (type_) {
+    case AggrFuncType::AGG_MAX:
+      return "max";
+    case AggrFuncType::AGG_MIN:
+      return "min";
+    case AggrFuncType::AGG_SUM:
+      return "sum";
+    case AggrFuncType::AGG_AVG:
+      return "avg";
+    case AggrFuncType::AGG_COUNT:
+      return "count";
+    default:
+      break;
+  }
+  return "unknown_aggr_fun";
+}
+
+AttrType AggrFuncExpr::value_type() const
+{
+  switch (type_) {
+    case AggrFuncType::AGG_MAX:
+    case AggrFuncType::AGG_MIN:
+    case AggrFuncType::AGG_SUM:
+      return param_->value_type();
+      break;
+    case AggrFuncType::AGG_AVG:
+      return DOUBLES;
+      break;
+    case AggrFuncType::AGG_COUNT:
+      return INTS;
+      break;
+    default:
+      return UNDEFINED;
+      break;
+  }
+  return UNDEFINED;
+}
+
+//Project 算子的cell_at 会调用该函数取得聚集函数最后计算的结果,传入的Tuple 就是gropuby 中的 grouptuple
+RC AggrFuncExpr::get_value(const Tuple &tuple, Value &cell) const
+{
+  TupleCellSpec spec(name().c_str());
+  // spec.set_agg_type(get_aggr_func_type());
+  return tuple.find_cell(spec,cell);
 }
