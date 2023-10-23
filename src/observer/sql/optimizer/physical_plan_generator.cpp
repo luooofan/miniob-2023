@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/optimizer/physical_plan_generator.h"
 #include "sql/operator/table_get_logical_operator.h"
 #include "sql/operator/table_scan_physical_operator.h"
+#include "sql/operator/dual_table_scan_physical_operator.h"
 #include "sql/operator/index_scan_physical_operator.h"
 #include "sql/operator/predicate_logical_operator.h"
 #include "sql/operator/predicate_physical_operator.h"
@@ -197,6 +198,8 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
       LOG_WARN("failed to create project logical operator's child physical operator. rc=%s", strrc(rc));
       return rc;
     }
+  } else {
+    child_phy_oper = std::make_unique<DualTableScanPhysicalOperator>();
   }
 
   ProjectPhysicalOperator *project_operator = new ProjectPhysicalOperator();

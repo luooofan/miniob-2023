@@ -688,7 +688,15 @@ join_list:
     ;
 
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT select_attr FROM from_node from_list where
+    SELECT select_attr
+    {
+      $$ = new ParsedSqlNode(SCF_SELECT);
+      if ($2 != nullptr) {
+        $$->selection.project_exprs.swap(*$2);
+        delete $2;
+      }
+    }
+    | SELECT select_attr FROM from_node from_list where
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {

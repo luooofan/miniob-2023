@@ -43,6 +43,7 @@ enum class PhysicalOperatorType
   EXPLAIN,
   PREDICATE,
   PROJECT,
+  DUAL_TABLE_SCAN,
   CALC,
   STRING_LIST,
   DELETE,
