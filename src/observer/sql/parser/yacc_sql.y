@@ -114,6 +114,9 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         AGGR_SUM
         AGGR_AVG
         AGGR_COUNT
+        LENGTH
+        ROUND
+        DATE_FORMAT
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -173,6 +176,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <expression>          expression
 %type <expression>          aggr_func_expr
 %type <number>              aggr_func_type
+%type <expression>          func_expr
+%type <number>              sys_func_type
 %type <expression_list>     expression_list
 %type <update_kv_list>      update_kv_list
 %type <update_kv>           update_kv
@@ -763,6 +768,9 @@ expression:
     |aggr_func_expr{
       $$ = $1;
     }
+    |func_expr{
+      $$ = $1;
+    }
     ;
 aggr_func_type:
     AGGR_MAX {
@@ -801,6 +809,27 @@ aggr_func_expr:
       // afexpr->set_param_constexpr(true);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));
+    }
+    ;
+sys_func_type:
+    LENGTH {
+      $$ = SysFuncType::SYS_FUNC_LENGTH;
+    }
+    | ROUND {
+      $$ = SysFuncType::SYS_FUNC_ROUND;
+    }
+    | DATE_FORMAT {
+      $$ = SysFuncType::SYS_FUNC_DATE_FORMAT;
+    }
+    ;
+func_expr:
+    sys_func_type LBRACE expression_list RBRACE
+    {
+      std::reverse($3->begin(),$3->end());
+      FuncExpr* fexpr = new FuncExpr((SysFuncType)$1,*$3);
+      $$ = fexpr;
+      $$->set_name(token_name(sql_string, &@$));
+      delete $3;
     }
     ;
 

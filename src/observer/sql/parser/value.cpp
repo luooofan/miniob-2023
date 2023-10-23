@@ -285,7 +285,7 @@ int Value::compare(const Value &other) const
 
 int Value::get_int() const
 {
-  ASSERT(attr_type_ != DATES,"date can not get_int()");
+  //ASSERT(attr_type_ != DATES,"date can not get_int()"); date_format 需要调用 get_int()
   switch (attr_type_) {
     case CHARS: {
       try {
@@ -295,7 +295,8 @@ int Value::get_int() const
         return 0;
       }
     }
-    case INTS: {
+    case INTS:
+    case DATES: {
       return num_value_.int_value_;
     }
     case FLOATS: {

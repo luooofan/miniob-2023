@@ -106,12 +106,15 @@ extern int yydebug;
     AGGR_SUM = 312,
     AGGR_AVG = 313,
     AGGR_COUNT = 314,
-    NUMBER = 315,
-    FLOAT = 316,
-    ID = 317,
-    SSS = 318,
-    DATE_STR = 319,
-    UMINUS = 320
+    LENGTH = 315,
+    ROUND = 316,
+    DATE_FORMAT = 317,
+    NUMBER = 318,
+    FLOAT = 319,
+    ID = 320,
+    SSS = 321,
+    DATE_STR = 322,
+    UMINUS = 323
   };
 #endif
 
@@ -119,7 +122,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 119 "yacc_sql.y"
+#line 122 "yacc_sql.y"
 
   ParsedSqlNode *                   sql_node;
   ConditionSqlNode *                condition;
@@ -144,7 +147,7 @@ union YYSTYPE
   float                             floats;
   bool                              boolean;
 
-#line 148 "yacc_sql.hpp"
+#line 151 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

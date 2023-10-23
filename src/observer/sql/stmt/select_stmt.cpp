@@ -295,7 +295,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         field_exprs_not_in_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
       }
     };
-    // do extract
+    // do extract 
     for (auto& project : projects) {
       project->traverse(collect_aggr_exprs);
       project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });

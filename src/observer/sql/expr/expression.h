@@ -45,6 +45,7 @@ enum class ExprType
   CONJUNCTION,  ///< 多个表达式使用同一种关系(AND或OR)来联结
   ARITHMETIC,   ///< 算术运算
   AGGRFUNCTION, ///< 聚集函数
+  SYSFUNCTION,  ///< 系统函数
 };
 
 /**
@@ -614,4 +615,163 @@ private:
   AggrFuncType type_;
   std::unique_ptr<Expression> param_;
   bool param_is_constexpr_ = false;
+};
+
+class FuncExpr : public Expression {
+public:
+  FuncExpr() = default;
+  FuncExpr(SysFuncType func_type,std::vector<Expression*>& params):func_type_(func_type)
+  {
+    for(auto expr: params)
+    {
+      params_.emplace_back(expr);
+    }
+  }
+  FuncExpr(SysFuncType func_type,std::vector<std::unique_ptr<Expression>> params):func_type_(func_type),
+  params_(std::move(params))
+  {
+  }
+  virtual ~FuncExpr() = default;
+  AttrType value_type() const override
+  {
+    AttrType type;
+    switch (func_type_)
+    {
+    case SYS_FUNC_LENGTH:
+      type = INTS;
+      break;
+    case SYS_FUNC_ROUND:
+      type = DOUBLES;
+      break;
+    case SYS_FUNC_DATE_FORMAT:
+      type = CHARS;
+      break;
+    default:
+      break;
+    }
+    return type;
+  }
+
+  ExprType type() const override
+  {
+    return ExprType::SYSFUNCTION;
+  }
+  RC get_func_length_value(const Tuple &tuple, Value &final_cell) const;
+
+  RC get_func_round_value(const Tuple &tuple, Value &final_cell) const;
+
+  RC get_func_data_format_value(const Tuple &tuple, Value &final_cell) const;
+
+  RC get_value(const Tuple &tuple, Value &final_cell) const override
+  {
+    RC rc = RC::SUCCESS;
+    switch (func_type_) {
+      case SYS_FUNC_LENGTH: {
+        rc = get_func_length_value(tuple, final_cell);
+        break;
+      }
+      case SYS_FUNC_ROUND: {
+        rc = get_func_round_value(tuple, final_cell);
+        break;
+      }
+      case SYS_FUNC_DATE_FORMAT: {
+        rc = get_func_data_format_value(tuple, final_cell);
+        break;
+      }
+      default:
+        break;
+    }
+    return rc;
+  }
+
+  SysFuncType get_func_type() const
+  {
+    return func_type_;
+  }
+  const int get_param_size() const
+  {
+    return params_.size();
+  }
+// traverse 用来提取表达式
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+        for (auto& param : params_){
+            param->traverse(func,filter);
+        }
+      }
+      func(this);
+  }
+  //后续遍历，用来检查参数中的fieldexpr,value expr,ArithmeticExpr
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    }
+    for (auto& param : params_) {
+      if (RC::SUCCESS != (rc = param->traverse_check(check_func))) {
+        return rc;
+      }
+    }
+    if(RC::SUCCESS != (rc = check_param_type_and_number())){
+      return rc;
+    }
+    return RC::SUCCESS;
+  }
+  RC check_param_type_and_number(){
+    RC rc = RC::SUCCESS;
+    switch (func_type_)
+    {
+      case SYS_FUNC_LENGTH:
+      {
+        if(params_.size() != 1 || params_[0]->value_type() != CHARS)
+          rc = RC::INVALID_ARGUMENT;
+      }
+      break;
+      case SYS_FUNC_ROUND:
+      {
+        //参数可以为一个或两个,第一个参数的结果类型 必须为 floats 或 double
+        if((params_.size() != 1 && params_.size() != 2) ||
+        (params_[0]->value_type() != FLOATS && params_[0]->value_type() != DOUBLES)) 
+          rc = RC::INVALID_ARGUMENT;
+        //如果有第二个参数，则类型必须为 INT
+        if(params_.size() == 2)
+        {
+          if(params_[1]->value_type() != INTS)
+          {
+            rc = RC::INVALID_ARGUMENT;
+          }
+        }
+      }
+      break;
+      case SYS_FUNC_DATE_FORMAT:
+      {
+        if(params_.size() != 2 || params_[0]->value_type() != DATES || params_[1]->value_type() != CHARS)
+        rc = RC::INVALID_ARGUMENT;
+      }
+      break;
+      default:
+      {
+        rc = RC::INVALID_ARGUMENT;
+      }
+      break;
+    }
+    return rc;
+  }
+  
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_params;
+    for (auto& param : params_) {
+      new_params.emplace_back(param->deep_copy());
+    }
+    auto new_expr = std::make_unique<FuncExpr>(func_type_, std::move(new_params));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
+private:
+  SysFuncType func_type_;
+  std::vector<std::unique_ptr<Expression>> params_;
 };
