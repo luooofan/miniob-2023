@@ -244,9 +244,8 @@ RC LogicalPlanGenerator::create_plan(
 {
   Table *table = insert_stmt->table();
   vector<vector<Value>> values;
-  ASSERT(insert_stmt->value_amount().size() == insert_stmt->values().size(), "InsertStmt Size Error!");
   for (int i = 0; i < insert_stmt->values().size(); ++i) {
-    values.emplace_back(insert_stmt->values()[i], insert_stmt->values()[i] + insert_stmt->value_amount()[i]);
+    values.emplace_back(insert_stmt->values()[i]);
   }
 
   InsertLogicalOperator *insert_operator = new InsertLogicalOperator(table, std::move(values));

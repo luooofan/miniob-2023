@@ -130,6 +130,7 @@ struct CalcSqlNode
 struct InsertSqlNode
 {
   std::string        relation_name;  ///< Relation to insert into
+  std::vector<std::string> attrs_name;    ///< 要插入的目标列
   std::vector<std::vector<Value>> values;         ///< 要插入的值
 };
 

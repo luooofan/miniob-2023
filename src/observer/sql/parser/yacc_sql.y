@@ -156,12 +156,14 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <condition>           condition
 %type <value>               value
 %type <number>              number
+%type <boolean>             null_option
 %type <boolean>             unique_option
 %type <comp>                comp_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
 %type <relation_list>       idx_col_list
+%type <relation_list>       insert_col_list
 %type <value_list>          value_list
 %type <value_list>          insert_value
 %type <insert_value_list>   insert_value_list
@@ -394,59 +396,37 @@ attr_def_list:
     ;
     
 attr_def:
-    ID type LBRACE number RBRACE 
+    ID type LBRACE number RBRACE null_option
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
-      $$->nullable = false;
+      $$->nullable = $6;
       free($1);
     }
-    | ID type LBRACE number RBRACE NOT NULL_T
-    {
-      $$ = new AttrInfoSqlNode;
-      $$->type = (AttrType)$2;
-      $$->name = $1;
-      $$->length = $4;
-      $$->nullable = false;
-      free($1);
-    }
-    | ID type LBRACE number RBRACE NULL_T
-    {
-      $$ = new AttrInfoSqlNode;
-      $$->type = (AttrType)$2;
-      $$->name = $1;
-      $$->length = $4;
-      $$->nullable = true;
-      free($1);
-    }
-    | ID type
+    | ID type null_option
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
-      $$->nullable = false;
+      $$->nullable = $3;
       free($1);
     }
-    | ID type NOT NULL_T
+    ;
+null_option:
+    /* empty */
     {
-      $$ = new AttrInfoSqlNode;
-      $$->type = (AttrType)$2;
-      $$->name = $1;
-      $$->length = 4;
-      $$->nullable = false;
-      free($1);
+      $$ = true;
     }
-    | ID type NULL_T
+    | NULL_T
     {
-      $$ = new AttrInfoSqlNode;
-      $$->type = (AttrType)$2;
-      $$->name = $1;
-      $$->length = 4;
-      $$->nullable = true;
-      free($1);
+      $$ = true;
+    }
+    | NOT NULL_T
+    {
+      $$ = false;
     }
     ;
 number:
@@ -460,17 +440,39 @@ type:
     | TEXT_T   { $$=TEXTS; }
     ;
 insert_stmt:        /*insert   语句的语法解析树*/
-    INSERT INTO ID VALUES insert_value insert_value_list
+    INSERT INTO ID insert_col_list VALUES insert_value insert_value_list
     {
       $$ = new ParsedSqlNode(SCF_INSERT);
       $$->insertion.relation_name = $3;
-      if ($6 != nullptr) {
-        $$->insertion.values.swap(*$6);
+      if ($7 != nullptr) {
+        $$->insertion.values.swap(*$7);
+        delete $7;
       }
-      $$->insertion.values.emplace_back(*$5);
+      $$->insertion.values.emplace_back(*$6);
       std::reverse($$->insertion.values.begin(), $$->insertion.values.end());
-      delete $5;
+      if (nullptr != $4) {
+        $$->insertion.attrs_name.swap(*$4);
+        std::reverse($$->insertion.attrs_name.begin(), $$->insertion.attrs_name.end());
+        delete $4;
+      }
+      delete $6;
       free($3);
+    }
+    ;
+insert_col_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | LBRACE ID idx_col_list RBRACE
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<std::string>;
+      }
+      $$->emplace_back($2);
+      free($2);      
     }
     ;
 
