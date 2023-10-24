@@ -151,7 +151,7 @@ RC LogicalPlanGenerator::create_plan(
 
   // set top oper
   ASSERT(outside_prev_oper, "ERROR!");
-  unique_ptr<LogicalOperator> top_oper = std::move(outside_prev_oper);
+  unique_ptr<LogicalOperator> top_oper = std::move(outside_prev_oper); // maybe null
 
   if (select_stmt->filter_stmt()) {
     unique_ptr<LogicalOperator> predicate_oper;
@@ -161,7 +161,9 @@ RC LogicalPlanGenerator::create_plan(
       return rc;
     }
     if (predicate_oper) {
-      predicate_oper->add_child(std::move(top_oper));
+      if (top_oper) {
+        predicate_oper->add_child(std::move(top_oper));
+      }
       top_oper = std::move(predicate_oper);
     }
   }
@@ -173,14 +175,18 @@ RC LogicalPlanGenerator::create_plan(
       return rc;
     }
     if(groupby_oper){
-      groupby_oper->add_child(std::move(top_oper));
+      if (top_oper) {
+        groupby_oper->add_child(std::move(top_oper));
+      }
       top_oper = std::move(groupby_oper);
     }
   }
   {
     unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(std::move(select_stmt->projects())));
     ASSERT(project_oper,"ERROR!");
-    project_oper->add_child(std::move(top_oper));
+    if (top_oper) {
+      project_oper->add_child(std::move(top_oper));
+    }
     top_oper = std::move(project_oper);
   }
 

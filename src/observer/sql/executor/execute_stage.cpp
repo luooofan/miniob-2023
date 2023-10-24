@@ -69,7 +69,11 @@ RC ExecuteStage::handle_request_with_physical_operator(SQLStageEvent *sql_event)
     case StmtType::SELECT: {
       ProjectPhysicalOperator *project_operator = static_cast<ProjectPhysicalOperator *>(physical_operator.get());
       for (const unique_ptr<Expression> & expr : project_operator->projections()) {
-        schema.append_cell(expr->name().c_str());
+        if (expr->alias().empty()) {
+          schema.append_cell(expr->name().c_str());
+        } else {
+          schema.append_cell(expr->alias().c_str());
+        }
       }
     } break;
 

@@ -79,13 +79,13 @@ RC InsertStmt::check_full_rows(Table *table, const InsertSqlNode &inserts, std::
       if (value_type == NULLS && field_meta->nullable()) {
         continue;
       }
-      if (field_type != value_type) {  // TODO try to convert the value type to field type
+      if (field_type != value_type) {
         if (TEXTS == field_type && CHARS == value_type) {
           if (MAX_TEXT_LENGTH < values[i].length()) {
             LOG_WARN("Text length:%d, over max_length 65535", values[i].length());
             return RC::INVALID_ARGUMENT;
           }
-        } else {
+        } else if (const_cast<Value&>(values[i]).typecast(field_type) != RC::SUCCESS) {
           LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
             table->name(), field_meta->name(), field_type, value_type);
           return RC::SCHEMA_FIELD_TYPE_MISMATCH;
@@ -169,7 +169,7 @@ RC InsertStmt::check_incomplete_rows(Table *table, const InsertSqlNode &inserts,
               LOG_WARN("Text length:%d, over max_length 65535", values[name_idx].length());
               return RC::INVALID_ARGUMENT;
             }
-          } else {
+          } else if (const_cast<Value&>(values[name_idx]).typecast(field_type) != RC::SUCCESS) {
             LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
               table->name(), field_meta->name(), field_type, value_type);
             return RC::SCHEMA_FIELD_TYPE_MISMATCH;

@@ -100,6 +100,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         NULL_T
         INNER
         JOIN
+        AS
         EQ
         LT
         GT
@@ -114,6 +115,9 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         AGGR_SUM
         AGGR_AVG
         AGGR_COUNT
+        LENGTH
+        ROUND
+        DATE_FORMAT
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -149,6 +153,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 //非终结符
 
 /** type 定义了各种解析后的结果输出的是什么类型。类型对应了 union 中的定义的成员变量名称 **/
+%type <string>              alias
 %type <inner_joins>         join_list
 %type <inner_joins>         from_node
 %type <inner_joins_list>    from_list
@@ -173,6 +178,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <expression>          expression
 %type <expression>          aggr_func_expr
 %type <number>              aggr_func_type
+%type <expression>          func_expr
+%type <number>              sys_func_type
 %type <expression_list>     expression_list
 %type <update_kv_list>      update_kv_list
 %type <update_kv>           update_kv
@@ -651,17 +658,30 @@ from_list:
     }
     ;
 
+alias:
+    /* empty */ {
+      $$ = nullptr;
+    }
+    | ID {
+      $$ = $1;
+    }
+    | AS ID {
+      $$ = $2;
+    }
+
 from_node:
-    ID join_list {
-      if (nullptr != $2) {
-        $$ = $2;
+    ID alias join_list {
+      if (nullptr != $3) {
+        $$ = $3;
       } else {
         $$ = new InnerJoinSqlNode;
       }
-      $$->base_relation = $1;
+      $$->base_relation.first = $1;
+      $$->base_relation.second = nullptr == $2 ? "" : std::string($2);
       std::reverse($$->join_relations.begin(), $$->join_relations.end());
       std::reverse($$->conditions.begin(), $$->conditions.end());
       free($1);
+      free($2);
     }
     ;
 
@@ -669,21 +689,34 @@ join_list:
     /* empty */ {
       $$ = nullptr;
     }
-    | INNER JOIN ID ON condition_list join_list {
-      if (nullptr != $6) {
-        $$ = $6;
+    | INNER JOIN ID alias ON condition_list join_list {
+      if (nullptr != $7) {
+        $$ = $7;
       } else {
         $$ = new InnerJoinSqlNode;
       }
-      $$->join_relations.emplace_back($3);
-      $$->conditions.emplace_back(*$5);
-      delete $5;
+      std::string temp = "";
+      if (nullptr != $4) {
+        temp = $4;
+      }
+      $$->join_relations.emplace_back($3, temp);
+      $$->conditions.emplace_back(*$6);
+      delete $6;
       free($3);
+      free($4);
     }
     ;
 
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT select_attr FROM from_node from_list where
+    SELECT select_attr
+    {
+      $$ = new ParsedSqlNode(SCF_SELECT);
+      if ($2 != nullptr) {
+        $$->selection.project_exprs.swap(*$2);
+        delete $2;
+      }
+    }
+    | SELECT select_attr FROM from_node from_list where
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -715,19 +748,27 @@ calc_stmt:
     ;
 
 expression_list:
-    expression
+    expression alias
     {
       $$ = new std::vector<Expression*>;
+      if (nullptr != $2) {
+        $1->set_alias($2);
+      }
       $$->emplace_back($1);
+      free($2);
     }
-    | expression COMMA expression_list
+    | expression alias COMMA expression_list
     {
-      if ($3 != nullptr) {
-        $$ = $3;
+      if ($4 != nullptr) {
+        $$ = $4;
       } else {
         $$ = new std::vector<Expression *>;
       }
+      if (nullptr != $2) {
+        $1->set_alias($2);
+      }
       $$->emplace_back($1);
+      free($2);
     }
     ;
 expression:
@@ -761,6 +802,9 @@ expression:
       delete $1;
     }
     |aggr_func_expr{
+      $$ = $1;
+    }
+    |func_expr{
       $$ = $1;
     }
     ;
@@ -801,6 +845,27 @@ aggr_func_expr:
       // afexpr->set_param_constexpr(true);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));
+    }
+    ;
+sys_func_type:
+    LENGTH {
+      $$ = SysFuncType::SYS_FUNC_LENGTH;
+    }
+    | ROUND {
+      $$ = SysFuncType::SYS_FUNC_ROUND;
+    }
+    | DATE_FORMAT {
+      $$ = SysFuncType::SYS_FUNC_DATE_FORMAT;
+    }
+    ;
+    
+func_expr:
+    sys_func_type LBRACE expression_list RBRACE
+    {
+      std::reverse($3->begin(),$3->end());
+      $$ = new SysFuncExpr((SysFuncType)$1,*$3);
+      $$->set_name(token_name(sql_string, &@$));
+      delete $3;
     }
     ;
 

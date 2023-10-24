@@ -71,9 +71,12 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
 
   const std::vector<Table *> table_arr; // 因为条件表达式里的 FieldExpr 一定是 t1.c1 所以传入个空的 table vector 就行
   auto check_field = [&tables, &table_arr, &db, &default_table](Expression *expr) {
-    if (expr->type() == ExprType::FIELD) {
+    if (expr->type() == ExprType::SYSFUNCTION) {
+      SysFuncExpr* sysfunc_expr = static_cast<SysFuncExpr*>(expr);
+      return sysfunc_expr->check_param_type_and_number();
+    } else if (expr->type() == ExprType::FIELD) {
       FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
-      return field_expr->check_field(*tables, table_arr, db, default_table);
+      return field_expr->check_field(*tables, {}, table_arr, db, default_table);
     }
     return RC::SUCCESS;
   };

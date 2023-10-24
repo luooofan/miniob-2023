@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include <string>
+#include "common/rc.h"
 
 static constexpr int MAX_TEXT_LENGTH = 65535;
 
@@ -139,6 +140,47 @@ public:
     {
       return false;
     }
+  }
+  RC typecast(AttrType target_type)
+  {
+    if(target_type == attr_type_)
+    {
+      return RC::SUCCESS;
+    }
+    if(target_type == DATES || attr_type_ == NULLS)//允许转为 DATE，NULL 不允许进行转换
+    {
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+    switch (target_type)
+    {
+      case INTS:
+      {
+        int tmp = get_int();
+        set_int(tmp);
+      }
+        break;
+      case FLOATS:
+      {
+        float tmp = get_float();
+        set_float(tmp);
+      }
+        break;
+      case DOUBLES:
+      {
+        double tmp = get_double();
+        set_double(tmp);
+      }
+        break;
+      case CHARS:
+      {
+        std::string tmp = get_string();
+        set_string(tmp.c_str());
+      }
+        break;
+      default:
+        break;
+    }
+    return RC::SUCCESS;
   }
 public:
   /**

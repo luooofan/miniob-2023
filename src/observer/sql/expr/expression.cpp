@@ -17,8 +17,12 @@ See the Mulan PSL v2 for more details. */
 #include <regex>
 #include <string>
 #include "common/lang/string.h"
+#include <iomanip>
 
 using namespace std;
+
+std::string month_name[] ={"","January","February","March","April","May","June",
+"July","August","September","October","November","December"};
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
@@ -385,8 +389,10 @@ RC ArithmeticExpr::try_get_value(Value &value) const
   return calc_value(left_value, right_value, value);
 }
 
-//检查表达式中出现的 表,列 是否存在
+// 检查表达式中出现的 表,列 是否存在
+// NOTE: 是针对 projects 中的 FieldExpr 写的 conditions 中的也可以用 但是处理之后的 name alias 是无效的
 RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::unordered_map<std::string, std::string> & table_alias_map,
     const std::vector<Table *> &tables, Db *db, Table* default_table)
 {
   ASSERT(field_name_ != "*", "ERROR!");
@@ -409,6 +415,8 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
     table = default_table ? default_table : tables[0];
   }
   ASSERT(nullptr != table, "ERROR!");
+  // set table_name
+  table_name = table->name();
   // check field
   const FieldMeta *field_meta = table->table_meta().field(field_name);
   if (nullptr == field_meta) {
@@ -417,12 +425,25 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
   }
   // set field_
   field_ = Field(table, field_meta);
-  // set name
+  // set name 应该没用了 但是保留它
   bool is_single_table = (tables.size() == 1);
   if(is_single_table) {
     set_name(field_name_);
   } else {
     set_name(table_name_ + "." + field_name_);
+  }
+  // set alias
+  if (alias().empty()) {
+    if (is_single_table) {
+      set_alias(field_name_);
+    } else {
+      auto iter = table_alias_map.find(table_name_);
+      if (iter != table_alias_map.end()) {
+        set_alias(iter->second + "." + field_name_);
+      } else {
+        set_alias(table_name_ + "." + field_name_);
+      }
+    }
   }
   return RC::SUCCESS;
 }
@@ -492,4 +513,211 @@ RC AggrFuncExpr::get_value(const Tuple &tuple, Value &cell) const
   TupleCellSpec spec(name().c_str());
   // spec.set_agg_type(get_aggr_func_type());
   return tuple.find_cell(spec,cell);
+}
+
+RC SysFuncExpr::get_func_length_value(const Tuple &tuple, Value &value) const
+{
+  auto & param_expr = params_.front();
+  Value param_cell;
+  param_expr->get_value(tuple, param_cell);
+  // unsupported not chars
+  if (param_cell.attr_type() != CHARS) {
+    return RC::INTERNAL;
+  }
+  int result_length = strlen(param_cell.data());
+  value.set_int(result_length);
+  return RC::SUCCESS;
+}
+
+RC SysFuncExpr::get_func_round_value(const Tuple &tuple, Value &value) const
+{
+  if (params_.size() > 1) {
+    auto & param_expr = params_[0];
+    auto & param_expr_precision = params_[1];
+    Value param_expr_cell;
+    Value param_expr_precision_cell;
+    param_expr->get_value(tuple, param_expr_cell);
+    param_expr_precision->get_value(tuple, param_expr_precision_cell);
+    if (param_expr_cell.attr_type() != FLOATS && param_expr_cell.attr_type() != DOUBLES ) {
+      return RC::INTERNAL;
+    }
+    if (param_expr_precision_cell.attr_type() != INTS) {
+      return RC::INTERNAL;
+    }
+    float cell_float = param_expr_cell.get_float();
+    int cell_precision = param_expr_precision_cell.get_int();
+    auto inner_round = [](double d, int precision) {
+      // std::cout << "Before: " << std::setprecision(12) << f << std::endl;
+      std::stringstream ss;
+      ss << std::fixed << std::setprecision(precision) << d;
+      ss >> d;
+      // std::cout << "After: " << std::setprecision(12) << f << std::endl;
+      return d;
+    };
+    *(uint32_t*)&cell_float += 1;
+    cell_float = inner_round(cell_float, cell_precision);
+    // std::cout << cell_float << std::endl;
+    value.set_float(cell_float);
+  } else {
+    auto &param_expr = *params_.begin();
+    Value param_expr_cell;
+    param_expr->get_value(tuple, param_expr_cell);
+    if (param_expr_cell.attr_type() != FLOATS && param_expr_cell.attr_type() != DOUBLES) {
+      return RC::INTERNAL;
+    }
+    float cell_float = param_expr_cell.get_float();
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(0) << cell_float;
+    ss >> cell_float;
+    value.set_float(cell_float);
+  }
+  return RC::SUCCESS;
+}
+
+RC SysFuncExpr::get_func_data_format_value(const Tuple &tuple, Value &value) const
+{
+  auto &date_expr = params_[0];
+  auto &format_expr = params_[1];
+  Value date_expr_cell;
+  Value format_expr_cell;
+  date_expr->get_value(tuple, date_expr_cell);
+  format_expr->get_value(tuple, format_expr_cell);
+  if (date_expr_cell.attr_type() != DATES) {
+    return RC::INTERNAL;
+  }
+  if (format_expr_cell.attr_type() != CHARS) {
+    return RC::INTERNAL;
+  }
+  int cell_date = date_expr_cell.get_int();
+  const char *cell_format_chars = format_expr_cell.data();
+
+  std::string result_date_str;
+  int year = cell_date / 10000;
+  int month = (cell_date / 100) % 100;
+  int day = cell_date % 100;
+  for (size_t i = 0; i < strlen(cell_format_chars); i++) {
+    // A ~ z
+    if (65 <= cell_format_chars[i] && cell_format_chars[i] <= 122) {
+      switch (cell_format_chars[i]) {
+        case 'Y': {
+          char tmp[5];
+          sprintf(tmp, "%d", year);
+          result_date_str += tmp;
+          break;
+        }
+        case 'y': {
+          char tmp[5];
+          sprintf(tmp, "%d", year % 100);
+          if (0 <= (year % 100) && (year % 100) <= 9) {
+            result_date_str += "0";
+          }
+          result_date_str += tmp;
+          break;
+        }
+        case 'M': {
+          if (month <= 0 || month > 12) {
+            return RC::INTERNAL;
+          }
+          result_date_str += month_name[month];
+          break;
+        }
+        case 'm': {
+          char tmp[3];
+          sprintf(tmp, "%d", month);
+          if (0 <= month && month <= 9) {
+            result_date_str += "0";
+          }
+          result_date_str += tmp;
+          break;
+        }
+        case 'D': {
+          char tmp[3];
+          sprintf(tmp, "%d", day);
+          result_date_str += tmp;
+          if (11 <= day && day <= 13) {
+            result_date_str += "th";
+          } else {
+            switch (day % 10) {
+              case 1: {
+                result_date_str += "st";
+                break;
+              }
+              case 2: {
+                result_date_str += "nd";
+                break;
+              }
+              case 3: {
+                result_date_str += "rd";
+                break;
+              }
+              default: {
+                result_date_str += "th";
+                break;
+              }
+            }
+          }
+          break;
+        }
+        case 'd': {
+          char tmp[3];
+          sprintf(tmp, "%d", day);
+          if (0 <= day && day <= 9) {
+            result_date_str += "0";
+          }
+          result_date_str += tmp;
+          break;
+        }
+        default: {
+          result_date_str += cell_format_chars[i];
+          break;
+        }
+      }
+    } else if (cell_format_chars[i] != '%') {
+      result_date_str += cell_format_chars[i];
+    }
+  }
+  value.set_string(result_date_str.c_str());
+  return RC::SUCCESS;
+}
+
+RC SysFuncExpr::check_param_type_and_number() const
+{
+  RC rc = RC::SUCCESS;
+  switch (func_type_)
+  {
+    case SYS_FUNC_LENGTH:
+    {
+      if(params_.size() != 1 || params_[0]->value_type() != CHARS)
+        rc = RC::INVALID_ARGUMENT;
+    }
+    break;
+    case SYS_FUNC_ROUND:
+    {
+      //参数可以为一个或两个,第一个参数的结果类型 必须为 floats 或 double
+      if((params_.size() != 1 && params_.size() != 2) ||
+      (params_[0]->value_type() != FLOATS && params_[0]->value_type() != DOUBLES)) 
+        rc = RC::INVALID_ARGUMENT;
+      //如果有第二个参数，则类型必须为 INT
+      if(params_.size() == 2)
+      {
+        if(params_[1]->value_type() != INTS)
+        {
+          rc = RC::INVALID_ARGUMENT;
+        }
+      }
+    }
+    break;
+    case SYS_FUNC_DATE_FORMAT:
+    {
+      if(params_.size() != 2 || params_[0]->value_type() != DATES || params_[1]->value_type() != CHARS)
+      rc = RC::INVALID_ARGUMENT;
+    }
+    break;
+    default:
+    {
+      rc = RC::INVALID_ARGUMENT;
+    }
+    break;
+  }
+  return rc;
 }

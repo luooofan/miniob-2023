@@ -45,6 +45,7 @@ enum class ExprType
   CONJUNCTION,  ///< 多个表达式使用同一种关系(AND或OR)来联结
   ARITHMETIC,   ///< 算术运算
   AGGRFUNCTION, ///< 聚集函数
+  SYSFUNCTION,  ///< 系统函数
 };
 
 /**
@@ -104,7 +105,7 @@ public:
     }
   }
 
-  // 先序遍历 检查
+  // 后序遍历 检查
   virtual RC traverse_check(const std::function<RC(Expression*)>& check_func)
   {
     return check_func(this);
@@ -118,8 +119,15 @@ public:
   virtual std::string name() const { return name_; }
   virtual void set_name(std::string name) { name_ = name; }
 
+  /**
+   * @brief 表达式的别名
+   */
+  virtual std::string alias() const { return alias_; }
+  virtual void set_alias(std::string alias) { alias_ = alias; }
+
 private:
-  std::string  name_;
+  std::string name_{};
+  std::string alias_{};
 };
 
 /**
@@ -153,6 +161,7 @@ public:
   RC get_value(const Tuple &tuple, Value &value) const override;
 
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
+    const std::unordered_map<std::string, std::string> & table_alias_map,
     const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr);
 
   std::unique_ptr<Expression> deep_copy() const override
@@ -253,9 +262,9 @@ public:
 
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
-    if (RC rc = check_func(this); RC::SUCCESS != rc) {
+    if (RC rc = child_->traverse_check(check_func); RC::SUCCESS != rc) {
       return rc;
-    } else if (rc = child_->traverse_check(check_func); RC::SUCCESS != rc) {
+    } else if (rc = check_func(this); RC::SUCCESS != rc) {
       return rc;
     }
     return RC::SUCCESS;
@@ -330,11 +339,11 @@ public:
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
-      return rc;
-    } else if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
+    if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
       return rc;
     } else if (has_rhs() && RC::SUCCESS != (rc = right_->traverse_check(check_func))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
     }
     return RC::SUCCESS;
@@ -399,13 +408,13 @@ public:
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
-      return rc;
-    }
     for (auto& child : children_) {
       if (RC::SUCCESS != (rc = child->traverse_check(check_func))) {
         return rc;
       }
+    }
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
     }
     return RC::SUCCESS;
   }
@@ -478,11 +487,11 @@ public:
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
-      return rc;
-    } else if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
+    if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
       return rc;
     } else if (has_rhs() && RC::SUCCESS != (rc = right_->traverse_check(check_func))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
     }
     return RC::SUCCESS;
@@ -577,13 +586,11 @@ public:
     type_ = type;
   }
 
-  // 聚集函数表达式的 traverse[_check] 需要特殊对待 目前如果参数是常量表达式就不进行遍历
+  // 聚集函数表达式的 traverse[_check] 需要特殊对待 param 可能是个 *
   void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
     if (filter(this)) {
-      if (!param_is_constexpr_) {
-        param_->traverse(func, filter);
-      }
+      param_->traverse(func, filter);
       func(this);
     }
   }
@@ -591,9 +598,9 @@ public:
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
+    if (RC::SUCCESS != (rc = param_->traverse_check(check_func))) {
       return rc;
-    } else if (!param_is_constexpr_ && RC::SUCCESS != (rc = param_->traverse_check(check_func))) {
+    } if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
     }
     return rc;
@@ -614,4 +621,109 @@ private:
   AggrFuncType type_;
   std::unique_ptr<Expression> param_;
   bool param_is_constexpr_ = false;
+};
+
+class SysFuncExpr : public Expression {
+public:
+  SysFuncExpr() = default;
+  SysFuncExpr(SysFuncType func_type, std::vector<Expression*>& params) : func_type_(func_type)
+  {
+    for (auto expr: params) {
+      params_.emplace_back(expr);
+    }
+  }
+  SysFuncExpr(SysFuncType func_type, std::vector<std::unique_ptr<Expression>> params) : func_type_(func_type), params_(std::move(params)) {}
+  virtual ~SysFuncExpr() = default;
+
+  AttrType value_type() const override
+  {
+    switch (func_type_) {
+      case SYS_FUNC_LENGTH:
+        return INTS;
+        break;
+      case SYS_FUNC_ROUND:
+        return FLOATS;
+        break;
+      case SYS_FUNC_DATE_FORMAT:
+        return CHARS;
+        break;
+      default:
+        break;
+    }
+    return UNDEFINED;
+  }
+
+  ExprType type() const override
+  {
+    return ExprType::SYSFUNCTION;
+  }
+
+  RC get_func_length_value(const Tuple &tuple, Value &value) const;
+
+  RC get_func_round_value(const Tuple &tuple, Value &value) const;
+
+  RC get_func_data_format_value(const Tuple &tuple, Value &value) const;
+
+  RC get_value(const Tuple &tuple, Value &value) const override
+  {
+    RC rc = RC::SUCCESS;
+    switch (func_type_) {
+      case SYS_FUNC_LENGTH: {
+        rc = get_func_length_value(tuple, value);
+        break;
+      }
+      case SYS_FUNC_ROUND: {
+        rc = get_func_round_value(tuple, value);
+        break;
+      }
+      case SYS_FUNC_DATE_FORMAT: {
+        rc = get_func_data_format_value(tuple, value);
+        break;
+      }
+      default:
+        break;
+    }
+    return rc;
+  }
+
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      for (auto& param : params_){
+          param->traverse(func, filter);
+      }
+      func(this);
+    }
+  }
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    for (auto& param : params_) {
+      if (RC::SUCCESS != (rc = param->traverse_check(check_func))) {
+        return rc;
+      }
+    }
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    }
+    return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_params;
+    for (auto& param : params_) {
+      new_params.emplace_back(param->deep_copy());
+    }
+    auto new_expr = std::make_unique<SysFuncExpr>(func_type_, std::move(new_params));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+
+  RC check_param_type_and_number() const;
+
+private:
+  SysFuncType func_type_;
+  std::vector<std::unique_ptr<Expression>> params_;
 };
