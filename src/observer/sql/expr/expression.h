@@ -105,7 +105,7 @@ public:
     }
   }
 
-  // 先序遍历 检查
+  // 后序遍历 检查
   virtual RC traverse_check(const std::function<RC(Expression*)>& check_func)
   {
     return check_func(this);
@@ -254,9 +254,9 @@ public:
 
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
-    if (RC rc = check_func(this); RC::SUCCESS != rc) {
+    if (RC rc = child_->traverse_check(check_func); RC::SUCCESS != rc) {
       return rc;
-    } else if (rc = child_->traverse_check(check_func); RC::SUCCESS != rc) {
+    } else if (rc = check_func(this); RC::SUCCESS != rc) {
       return rc;
     }
     return RC::SUCCESS;
@@ -331,11 +331,11 @@ public:
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
-      return rc;
-    } else if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
+    if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
       return rc;
     } else if (has_rhs() && RC::SUCCESS != (rc = right_->traverse_check(check_func))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
     }
     return RC::SUCCESS;
@@ -400,13 +400,13 @@ public:
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
-      return rc;
-    }
     for (auto& child : children_) {
       if (RC::SUCCESS != (rc = child->traverse_check(check_func))) {
         return rc;
       }
+    }
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
     }
     return RC::SUCCESS;
   }
@@ -479,11 +479,11 @@ public:
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
-      return rc;
-    } else if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
+    if (RC::SUCCESS != (rc = left_->traverse_check(check_func))) {
       return rc;
     } else if (has_rhs() && RC::SUCCESS != (rc = right_->traverse_check(check_func))) {
+      return rc;
+    } else if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
     }
     return RC::SUCCESS;
@@ -578,13 +578,11 @@ public:
     type_ = type;
   }
 
-  // 聚集函数表达式的 traverse[_check] 需要特殊对待 目前如果参数是常量表达式就不进行遍历
+  // 聚集函数表达式的 traverse[_check] 需要特殊对待 param 可能是个 *
   void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
     if (filter(this)) {
-      if (!param_is_constexpr_) {
-        param_->traverse(func, filter);
-      }
+      param_->traverse(func, filter);
       func(this);
     }
   }
@@ -592,9 +590,9 @@ public:
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
+    if (RC::SUCCESS != (rc = param_->traverse_check(check_func))) {
       return rc;
-    } else if (!param_is_constexpr_ && RC::SUCCESS != (rc = param_->traverse_check(check_func))) {
+    } if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
     }
     return rc;
@@ -617,65 +615,61 @@ private:
   bool param_is_constexpr_ = false;
 };
 
-class FuncExpr : public Expression {
+class SysFuncExpr : public Expression {
 public:
-  FuncExpr() = default;
-  FuncExpr(SysFuncType func_type,std::vector<Expression*>& params):func_type_(func_type)
+  SysFuncExpr() = default;
+  SysFuncExpr(SysFuncType func_type, std::vector<Expression*>& params) : func_type_(func_type)
   {
-    for(auto expr: params)
-    {
+    for (auto expr: params) {
       params_.emplace_back(expr);
     }
   }
-  FuncExpr(SysFuncType func_type,std::vector<std::unique_ptr<Expression>> params):func_type_(func_type),
-  params_(std::move(params))
-  {
-  }
-  virtual ~FuncExpr() = default;
+  SysFuncExpr(SysFuncType func_type, std::vector<std::unique_ptr<Expression>> params) : func_type_(func_type), params_(std::move(params)) {}
+  virtual ~SysFuncExpr() = default;
+
   AttrType value_type() const override
   {
-    AttrType type;
-    switch (func_type_)
-    {
-    case SYS_FUNC_LENGTH:
-      type = INTS;
-      break;
-    case SYS_FUNC_ROUND:
-      type = DOUBLES;
-      break;
-    case SYS_FUNC_DATE_FORMAT:
-      type = CHARS;
-      break;
-    default:
-      break;
+    switch (func_type_) {
+      case SYS_FUNC_LENGTH:
+        return INTS;
+        break;
+      case SYS_FUNC_ROUND:
+        return FLOATS;
+        break;
+      case SYS_FUNC_DATE_FORMAT:
+        return CHARS;
+        break;
+      default:
+        break;
     }
-    return type;
+    return UNDEFINED;
   }
 
   ExprType type() const override
   {
     return ExprType::SYSFUNCTION;
   }
-  RC get_func_length_value(const Tuple &tuple, Value &final_cell) const;
 
-  RC get_func_round_value(const Tuple &tuple, Value &final_cell) const;
+  RC get_func_length_value(const Tuple &tuple, Value &value) const;
 
-  RC get_func_data_format_value(const Tuple &tuple, Value &final_cell) const;
+  RC get_func_round_value(const Tuple &tuple, Value &value) const;
 
-  RC get_value(const Tuple &tuple, Value &final_cell) const override
+  RC get_func_data_format_value(const Tuple &tuple, Value &value) const;
+
+  RC get_value(const Tuple &tuple, Value &value) const override
   {
     RC rc = RC::SUCCESS;
     switch (func_type_) {
       case SYS_FUNC_LENGTH: {
-        rc = get_func_length_value(tuple, final_cell);
+        rc = get_func_length_value(tuple, value);
         break;
       }
       case SYS_FUNC_ROUND: {
-        rc = get_func_round_value(tuple, final_cell);
+        rc = get_func_round_value(tuple, value);
         break;
       }
       case SYS_FUNC_DATE_FORMAT: {
-        rc = get_func_data_format_value(tuple, final_cell);
+        rc = get_func_data_format_value(tuple, value);
         break;
       }
       default:
@@ -684,92 +678,42 @@ public:
     return rc;
   }
 
-  SysFuncType get_func_type() const
-  {
-    return func_type_;
-  }
-  const int get_param_size() const
-  {
-    return params_.size();
-  }
-// traverse 用来提取表达式
   void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
   {
     if (filter(this)) {
-        for (auto& param : params_){
-            param->traverse(func,filter);
-        }
+      for (auto& param : params_){
+          param->traverse(func, filter);
       }
       func(this);
+    }
   }
-  //后续遍历，用来检查参数中的fieldexpr,value expr,ArithmeticExpr
+
   RC traverse_check(const std::function<RC(Expression*)>& check_func) override
   {
     RC rc = RC::SUCCESS;
-    if (RC::SUCCESS != (rc = check_func(this))) {
-      return rc;
-    }
     for (auto& param : params_) {
       if (RC::SUCCESS != (rc = param->traverse_check(check_func))) {
         return rc;
       }
     }
-    if(RC::SUCCESS != (rc = check_param_type_and_number())){
+    if (RC::SUCCESS != (rc = check_func(this))) {
       return rc;
     }
     return RC::SUCCESS;
   }
-  RC check_param_type_and_number(){
-    RC rc = RC::SUCCESS;
-    switch (func_type_)
-    {
-      case SYS_FUNC_LENGTH:
-      {
-        if(params_.size() != 1 || params_[0]->value_type() != CHARS)
-          rc = RC::INVALID_ARGUMENT;
-      }
-      break;
-      case SYS_FUNC_ROUND:
-      {
-        //参数可以为一个或两个,第一个参数的结果类型 必须为 floats 或 double
-        if((params_.size() != 1 && params_.size() != 2) ||
-        (params_[0]->value_type() != FLOATS && params_[0]->value_type() != DOUBLES)) 
-          rc = RC::INVALID_ARGUMENT;
-        //如果有第二个参数，则类型必须为 INT
-        if(params_.size() == 2)
-        {
-          if(params_[1]->value_type() != INTS)
-          {
-            rc = RC::INVALID_ARGUMENT;
-          }
-        }
-      }
-      break;
-      case SYS_FUNC_DATE_FORMAT:
-      {
-        if(params_.size() != 2 || params_[0]->value_type() != DATES || params_[1]->value_type() != CHARS)
-        rc = RC::INVALID_ARGUMENT;
-      }
-      break;
-      default:
-      {
-        rc = RC::INVALID_ARGUMENT;
-      }
-      break;
-    }
-    return rc;
-  }
-  
+
   std::unique_ptr<Expression> deep_copy() const override
   {
     std::vector<std::unique_ptr<Expression>> new_params;
     for (auto& param : params_) {
       new_params.emplace_back(param->deep_copy());
     }
-    auto new_expr = std::make_unique<FuncExpr>(func_type_, std::move(new_params));
+    auto new_expr = std::make_unique<SysFuncExpr>(func_type_, std::move(new_params));
     new_expr->set_name(name());
     return new_expr;
   }
+
+  RC check_param_type_and_number() const;
 
 private:
   SysFuncType func_type_;

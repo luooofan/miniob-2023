@@ -210,8 +210,10 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   auto check_field = [&table_map, &tables, &db, &default_table, &has_aggr_func_expr](Expression *expr) {
     if (expr->type() == ExprType::AGGRFUNCTION) {
       has_aggr_func_expr = true;
-    }
-    if (expr->type() == ExprType::FIELD) {
+    } else if (expr->type() == ExprType::SYSFUNCTION) {
+      SysFuncExpr* sysfunc_expr = static_cast<SysFuncExpr*>(expr);
+      return sysfunc_expr->check_param_type_and_number();
+    } else if (expr->type() == ExprType::FIELD) {
       FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
       return field_expr->check_field(table_map, tables, db, default_table);
     }
@@ -242,14 +244,14 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         wildcard_fields(iter->second, projects, is_single_table);
       } else { // t1.c1 or c1
         if(rc = field_expr->check_field(table_map, tables, db, default_table); rc != RC::SUCCESS) {
-          LOG_INFO("expr->check_field error!");
+          LOG_WARN("expr->check_field error!");
           return rc;
         }
         projects.emplace_back(expr);
       }
     } else {
       if (rc = expr->traverse_check(check_field); rc != RC::SUCCESS) {
-        LOG_INFO("project expr traverse check_field error!");
+        LOG_WARN("project expr traverse check_field error!");
         return rc;
       }
       projects.emplace_back(expr);
@@ -295,7 +297,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         field_exprs_not_in_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
       }
     };
-    // do extract 
+    // do extract
     for (auto& project : projects) {
       project->traverse(collect_aggr_exprs);
       project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });

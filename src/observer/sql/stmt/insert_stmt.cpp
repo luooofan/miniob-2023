@@ -169,7 +169,7 @@ RC InsertStmt::check_incomplete_rows(Table *table, const InsertSqlNode &inserts,
               LOG_WARN("Text length:%d, over max_length 65535", values[name_idx].length());
               return RC::INVALID_ARGUMENT;
             }
-          } else if (const_cast<Value&>(values[i]).typecast(field_type) != RC::SUCCESS) {
+          } else if (const_cast<Value&>(values[name_idx]).typecast(field_type) != RC::SUCCESS) {
             LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
               table->name(), field_meta->name(), field_type, value_type);
             return RC::SCHEMA_FIELD_TYPE_MISMATCH;

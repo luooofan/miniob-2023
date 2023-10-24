@@ -822,12 +822,12 @@ sys_func_type:
       $$ = SysFuncType::SYS_FUNC_DATE_FORMAT;
     }
     ;
+    
 func_expr:
     sys_func_type LBRACE expression_list RBRACE
     {
       std::reverse($3->begin(),$3->end());
-      FuncExpr* fexpr = new FuncExpr((SysFuncType)$1,*$3);
-      $$ = fexpr;
+      $$ = new SysFuncExpr((SysFuncType)$1,*$3);
       $$->set_name(token_name(sql_string, &@$));
       delete $3;
     }

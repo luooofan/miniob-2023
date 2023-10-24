@@ -21,6 +21,9 @@ See the Mulan PSL v2 for more details. */
 
 using namespace std;
 
+std::string month_name[] ={"","January","February","March","April","May","June",
+"July","August","September","October","November","December"};
+
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
   return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
@@ -495,37 +498,36 @@ RC AggrFuncExpr::get_value(const Tuple &tuple, Value &cell) const
   return tuple.find_cell(spec,cell);
 }
 
-RC FuncExpr::get_func_length_value(const Tuple &tuple, Value &final_cell) const
+RC SysFuncExpr::get_func_length_value(const Tuple &tuple, Value &value) const
 {
-  auto & param_expr = *params_.begin();
+  auto & param_expr = params_.front();
   Value param_cell;
   param_expr->get_value(tuple, param_cell);
   // unsupported not chars
   if (param_cell.attr_type() != CHARS) {
     return RC::INTERNAL;
   }
-  const char *param_char = param_cell.data();
-  int result_length = strlen(param_char);
-  final_cell.set_int(result_length);
+  int result_length = strlen(param_cell.data());
+  value.set_int(result_length);
   return RC::SUCCESS;
 }
 
-RC FuncExpr::get_func_round_value(const Tuple &tuple, Value &final_cell) const
+RC SysFuncExpr::get_func_round_value(const Tuple &tuple, Value &value) const
 {
-  if (get_param_size() > 1) {
-    auto & param_expr = *params_.begin();
+  if (params_.size() > 1) {
+    auto & param_expr = params_[0];
     auto & param_expr_precision = params_[1];
     Value param_expr_cell;
     Value param_expr_precision_cell;
     param_expr->get_value(tuple, param_expr_cell);
     param_expr_precision->get_value(tuple, param_expr_precision_cell);
-    if (param_expr_cell.attr_type() != FLOATS  && param_expr_cell.attr_type() != DOUBLES ) {
+    if (param_expr_cell.attr_type() != FLOATS && param_expr_cell.attr_type() != DOUBLES ) {
       return RC::INTERNAL;
     }
     if (param_expr_precision_cell.attr_type() != INTS) {
       return RC::INTERNAL;
     }
-    double cell_double = param_expr_cell.get_double();
+    float cell_float = param_expr_cell.get_float();
     int cell_precision = param_expr_precision_cell.get_int();
     auto inner_round = [](double d, int precision) {
       // std::cout << "Before: " << std::setprecision(12) << f << std::endl;
@@ -535,10 +537,10 @@ RC FuncExpr::get_func_round_value(const Tuple &tuple, Value &final_cell) const
       // std::cout << "After: " << std::setprecision(12) << f << std::endl;
       return d;
     };
-    cell_double += 1;
-    cell_double = inner_round(cell_double, cell_precision);
+    *(uint32_t*)&cell_float += 1;
+    cell_float = inner_round(cell_float, cell_precision);
     // std::cout << cell_float << std::endl;
-    final_cell.set_double(cell_double);
+    value.set_float(cell_float);
   } else {
     auto &param_expr = *params_.begin();
     Value param_expr_cell;
@@ -546,18 +548,18 @@ RC FuncExpr::get_func_round_value(const Tuple &tuple, Value &final_cell) const
     if (param_expr_cell.attr_type() != FLOATS && param_expr_cell.attr_type() != DOUBLES) {
       return RC::INTERNAL;
     }
-    double cell_double = param_expr_cell.get_double();
+    float cell_float = param_expr_cell.get_float();
     std::stringstream ss;
-    ss << std::fixed << std::setprecision(0) << cell_double;
-    ss >> cell_double;
-    final_cell.set_double(cell_double);
+    ss << std::fixed << std::setprecision(0) << cell_float;
+    ss >> cell_float;
+    value.set_float(cell_float);
   }
   return RC::SUCCESS;
 }
 
-RC FuncExpr::get_func_data_format_value(const Tuple &tuple, Value &final_cell) const
+RC SysFuncExpr::get_func_data_format_value(const Tuple &tuple, Value &value) const
 {
-  auto &date_expr =*params_.begin();
+  auto &date_expr = params_[0];
   auto &format_expr = params_[1];
   Value date_expr_cell;
   Value format_expr_cell;
@@ -596,60 +598,10 @@ RC FuncExpr::get_func_data_format_value(const Tuple &tuple, Value &final_cell) c
           break;
         }
         case 'M': {
-          switch (month) {
-            case 1: {
-              result_date_str += "January";
-              break;
-            }
-            case 2: {
-              result_date_str += "February";
-              break;
-            }
-            case 3: {
-              result_date_str += "March";
-              break;
-            }
-            case 4: {
-              result_date_str += "April";
-              break;
-            }
-            case 5: {
-              result_date_str += "May";
-              break;
-            }
-            case 6: {
-              result_date_str += "June";
-              break;
-            }
-            case 7: {
-              result_date_str += "July";
-              break;
-            }
-            case 8: {
-              result_date_str += "August";
-              break;
-            }
-            case 9: {
-              result_date_str += "September";
-              break;
-            }
-            case 10: {
-              result_date_str += "October";
-              break;
-            }
-            case 11: {
-              result_date_str += "November";
-              break;
-            }
-            case 12: {
-              result_date_str += "December";
-              break;
-            }
-            default: {
-              return RC::INTERNAL;
-              break;
-            }
+          if (month <= 0 || month > 12) {
+            return RC::INTERNAL;
           }
+          result_date_str += month_name[month];
           break;
         }
         case 'm': {
@@ -664,28 +616,24 @@ RC FuncExpr::get_func_data_format_value(const Tuple &tuple, Value &final_cell) c
         case 'D': {
           char tmp[3];
           sprintf(tmp, "%d", day);
-          if (10 <= day && day <= 20) {
-            result_date_str += tmp;
+          result_date_str += tmp;
+          if (11 <= day && day <= 13) {
             result_date_str += "th";
           } else {
             switch (day % 10) {
               case 1: {
-                result_date_str += tmp;
                 result_date_str += "st";
                 break;
               }
               case 2: {
-                result_date_str += tmp;
                 result_date_str += "nd";
                 break;
               }
               case 3: {
-                result_date_str += tmp;
                 result_date_str += "rd";
                 break;
               }
               default: {
-                result_date_str += tmp;
                 result_date_str += "th";
                 break;
               }
@@ -711,6 +659,48 @@ RC FuncExpr::get_func_data_format_value(const Tuple &tuple, Value &final_cell) c
       result_date_str += cell_format_chars[i];
     }
   }
-  final_cell.set_string(result_date_str.c_str());
+  value.set_string(result_date_str.c_str());
   return RC::SUCCESS;
+}
+
+RC SysFuncExpr::check_param_type_and_number() const
+{
+  RC rc = RC::SUCCESS;
+  switch (func_type_)
+  {
+    case SYS_FUNC_LENGTH:
+    {
+      if(params_.size() != 1 || params_[0]->value_type() != CHARS)
+        rc = RC::INVALID_ARGUMENT;
+    }
+    break;
+    case SYS_FUNC_ROUND:
+    {
+      //参数可以为一个或两个,第一个参数的结果类型 必须为 floats 或 double
+      if((params_.size() != 1 && params_.size() != 2) ||
+      (params_[0]->value_type() != FLOATS && params_[0]->value_type() != DOUBLES)) 
+        rc = RC::INVALID_ARGUMENT;
+      //如果有第二个参数，则类型必须为 INT
+      if(params_.size() == 2)
+      {
+        if(params_[1]->value_type() != INTS)
+        {
+          rc = RC::INVALID_ARGUMENT;
+        }
+      }
+    }
+    break;
+    case SYS_FUNC_DATE_FORMAT:
+    {
+      if(params_.size() != 2 || params_[0]->value_type() != DATES || params_[1]->value_type() != CHARS)
+      rc = RC::INVALID_ARGUMENT;
+    }
+    break;
+    default:
+    {
+      rc = RC::INVALID_ARGUMENT;
+    }
+    break;
+  }
+  return rc;
 }
