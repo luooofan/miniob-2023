@@ -160,6 +160,8 @@ public:
   
   RC get_value(const Tuple &tuple, Value &value) const override;
 
+  FieldMeta get_field_meta() const { return *field_.meta(); }
+
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
     const std::unordered_map<std::string, std::string> & table_alias_map,
     const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr);

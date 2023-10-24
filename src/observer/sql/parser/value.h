@@ -19,6 +19,8 @@ See the Mulan PSL v2 for more details. */
 
 static constexpr int MAX_TEXT_LENGTH = 65535;
 
+static int ATTR_TYPE_LENGTH[] = { -1, 4, 4, 4, 8, 4, 8, MAX_TEXT_LENGTH, 4, -1 };
+
 /**
  * @brief 属性的类型
  * 
