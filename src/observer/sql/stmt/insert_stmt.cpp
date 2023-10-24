@@ -17,12 +17,13 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
-InsertStmt::InsertStmt(Table *table, std::vector<const Value *> values, std::vector<int> value_amount)
+InsertStmt::InsertStmt(Table *table, std::vector<std::vector<Value>> &values, int value_amount)
     : table_(table), values_(values), value_amount_(value_amount)
 {}
 
 RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
 {
+  RC rc = RC::SUCCESS;
   const char *table_name = inserts.relation_name.c_str();
   if (nullptr == db || nullptr == table_name || inserts.values.empty()) {
     LOG_WARN("invalid argument. db=%p, table_name=%p, value_num=%d",
@@ -37,22 +38,41 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  // check the fields number
-  std::vector<const Value*> valuess;
-  std::vector<int> value_nums;
+  std::vector<std::vector<Value>> rows;
+  if (0 == inserts.attrs_name.size()) {
+    rc = check_full_rows(table, inserts, rows);
+  } else {
+    rc = check_incomplete_rows(table, inserts, rows);
+  }
+  if (RC::SUCCESS != rc) {
+    LOG_WARN("values not match schema, rc=%s", strrc(rc));
+    return rc;
+  }
+
+  // everything alright
+  int field_num = table->table_meta().field_num() - table->table_meta().sys_field_num();
+  stmt = new InsertStmt(table, rows, field_num);
+  return RC::SUCCESS;
+}
+
+RC InsertStmt::check_full_rows(Table *table, const InsertSqlNode &inserts, std::vector<std::vector<Value>> &rows)
+{
+  RC rc = RC::SUCCESS;
+
   const TableMeta &table_meta = table->table_meta();
   const int field_num = table_meta.field_num() - table_meta.sys_field_num();
   const int sys_field_num = table_meta.sys_field_num();
-  for (auto& vs : inserts.values) {
-    const Value *values = vs.data();
-    const int value_num = static_cast<int>(vs.size());
+
+  // 检查每一行数据
+  for (const std::vector<Value> &values : inserts.values) {
+    const int value_num = static_cast<int>(values.size());
     if (field_num != value_num) {
       LOG_WARN("schema mismatch. value num=%d, field num in schema=%d", value_num, field_num);
       return RC::SCHEMA_FIELD_MISSING;
     }
 
     // check fields type
-    for (int i = 0; i < value_num; i++) {
+    for (int i = 0; i < field_num; i++) {
       const FieldMeta *field_meta = table_meta.field(i + sys_field_num);
       const AttrType field_type = field_meta->type();
       const AttrType value_type = values[i].attr_type();
@@ -67,7 +87,7 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
           }
         } else {
           LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
-            table_name, field_meta->name(), field_type, value_type);
+            table->name(), field_meta->name(), field_type, value_type);
           return RC::SCHEMA_FIELD_TYPE_MISMATCH;
         }
       }
@@ -79,18 +99,100 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
           return RC::INVALID_ARGUMENT;
         }
         // 将不确定长度的 char 改为固定长度的 char
-        char *char_value = (char*)malloc(field_meta->len());
-        memset(char_value, 0, field_meta->len());
-        memcpy(char_value, values[i].data(), values[i].length());
-        const_cast<Value*>(values)[i].set_data(char_value, field_meta->len());
-        free(char_value);
+        char *char_data = (char*)malloc(field_meta->len());
+        memset(char_data, 0, field_meta->len());
+        memcpy(char_data, values[i].data(), values[i].length());
+        const Value &char_value = values[i];
+        const_cast<Value*>(&char_value)->set_data(char_data, field_meta->len());
+        free(char_data);
       }
     }
-    valuess.emplace_back(values);
-    value_nums.emplace_back(value_num);
+    rows.emplace_back(values);
+  }
+  return rc;
+}
+
+RC InsertStmt::check_incomplete_rows(Table *table, const InsertSqlNode &inserts, std::vector<std::vector<Value>> &rows)
+{
+  RC rc = RC::SUCCESS;
+
+  const TableMeta &table_meta = table->table_meta();
+  const int field_num = table_meta.field_num() - table_meta.sys_field_num();
+  const int sys_field_num = table_meta.sys_field_num();
+  int col_name_num = inserts.attrs_name.size();
+  const std::vector<std::string> &col_names = inserts.attrs_name;
+
+  // 记录行中每一列是values中第几个，不存在的为-1
+  std::vector<int> col_idx(field_num, -1);
+
+  // 确认每个列名称都是正确的，以及确认列在行中位置
+  for (int i = 0; i < col_names.size(); i++) {
+    const std::string &col_name = col_names[i];
+    int field_idx = table->table_meta().find_field_idx_by_name(col_name.c_str());
+    if (-1 == field_idx) {
+      LOG_ERROR("column not exist:%s", col_name.c_str());
+      return RC::SCHEMA_FIELD_NOT_EXIST;
+    }
+    col_idx[field_idx - sys_field_num] = i;
   }
 
-  // everything alright
-  stmt = new InsertStmt(table, valuess, value_nums);
-  return RC::SUCCESS;
+  // 检查每一行数据
+  for (const std::vector<Value> &values : inserts.values) {
+     const int value_num = static_cast<int>(values.size());
+    if (value_num != inserts.attrs_name.size()) {
+      LOG_WARN("value mismatch with attr_names. value num=%d, attr_names num=%d", value_num, inserts.attrs_name.size());
+      return RC::INVALID_ARGUMENT;
+    }
+
+    // check fields type
+    std::vector<Value> row(field_num, {NULLS, nullptr, 0});
+    for (int i = 0; i < field_num; i++) {
+      const FieldMeta *field_meta = table_meta.field(i + sys_field_num);
+      if (-1 == col_idx[i]) {
+        // 该列未指定
+        if (!field_meta->nullable()) {
+          LOG_WARN("field not allow NULL:%s", field_meta->name());;
+          return RC::INVALID_ARGUMENT;
+        }
+      } else {
+        // 指定了值的列，需要检查
+        int name_idx = col_idx[i];  // 该列的值是第几个
+        const AttrType field_type = field_meta->type();
+        const AttrType value_type = values[name_idx].attr_type();
+
+        if (value_type == NULLS && field_meta->nullable()) {
+          continue;
+        }
+        if (field_type != value_type) {  // TODO try to convert the value type to field type
+          if (TEXTS == field_type && CHARS == value_type) {
+            if (MAX_TEXT_LENGTH < values[name_idx].length()) {
+              LOG_WARN("Text length:%d, over max_length 65535", values[name_idx].length());
+              return RC::INVALID_ARGUMENT;
+            }
+          } else {
+            LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+              table->name(), field_meta->name(), field_type, value_type);
+            return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+          }
+        }
+        if(field_type == CHARS && values[name_idx].length() > field_meta->len()){
+            return RC::INVALID_ARGUMENT;
+        }
+        if(field_type == CHARS) {
+          if (values[name_idx].length() > field_meta->len()) {
+            return RC::INVALID_ARGUMENT;
+          }
+          // 将不确定长度的 char 改为固定长度的 char
+          char *char_data = (char*)malloc(field_meta->len());
+          memset(char_data, 0, field_meta->len());
+          memcpy(char_data, values[name_idx].data(), values[name_idx].length());
+          row[i] = Value(CHARS, char_data, field_meta->len());
+          free(char_data);
+        }
+        row[i] = values[name_idx];
+      }
+    }
+    rows.emplace_back(row);
+  }
+  return rc;
 }

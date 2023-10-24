@@ -28,7 +28,7 @@ class InsertStmt : public Stmt
 {
 public:
   InsertStmt() = default;
-  InsertStmt(Table *table, std::vector<const Value *> values, std::vector<int> value_amount);
+  InsertStmt(Table *table, std::vector<std::vector<Value>> &values, int value_amount);
 
   StmtType type() const override
   {
@@ -43,17 +43,23 @@ public:
   {
     return table_;
   }
-  const std::vector<const Value *>& values() const
+  const std::vector<std::vector<Value>>& values() const
   {
     return values_;
   }
-  const std::vector<int>& value_amount() const
+  const int value_amount() const
   {
     return value_amount_;
   }
+private:
+  // 未指定列名
+  static RC check_full_rows(Table *table, const InsertSqlNode &inserts, std::vector<std::vector<Value>> &rows);
+
+  // 指定了列名
+  static RC check_incomplete_rows(Table *table, const InsertSqlNode &inserts, std::vector<std::vector<Value>> &rows);
 
 private:
   Table *table_ = nullptr;
-  const std::vector<const Value *> values_; // TODO when to delete ?
-  const std::vector<int> value_amount_;
+  const std::vector<std::vector<Value>> values_;
+  int value_amount_ = 0;    // 一行有多少列
 };
