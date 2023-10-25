@@ -27,6 +27,7 @@ class SQLStageEvent;
 class FieldMeta;
 class FilterStmt;
 class GroupByStmt;
+class OrderByStmt;
 class Db;
 class Table;
 
@@ -85,6 +86,10 @@ public:
   {
     return groupby_stmt_;
   }
+  OrderByStmt *orderby_stmt() const
+  {
+    return orderby_stmt_;
+  }
   std::vector<std::unique_ptr<Expression>> &projects()
   {
     return projects_;
@@ -94,4 +99,5 @@ private:
   std::vector<JoinTables> join_tables_;
   FilterStmt *filter_stmt_ = nullptr;
   GroupByStmt * groupby_stmt_ = nullptr;
+  OrderByStmt * orderby_stmt_ = nullptr;
 };

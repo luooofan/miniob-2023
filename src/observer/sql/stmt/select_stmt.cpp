@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/filter_stmt.h"
 #include "sql/stmt/groupby_stmt.h"
+#include "sql/stmt/orderby_stmt.h"
 #include "common/log/log.h"
 #include "common/lang/string.h"
 #include "storage/db/db.h"
@@ -331,25 +332,26 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     }
   }
 
+
   // TODO 还未在语法层面支持 group by clause
   GroupByStmt *groupby_stmt = nullptr;
   // 有聚集函数表达式 或者有 group by clause 就要添加 group by stmt
   if (has_aggr_func_expr /* || nullptr != select_sql.groupby_ */) {
     // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
-    std::vector<std::unique_ptr<AggrFuncExpr>> aggr_exprs;
-    std::vector<std::unique_ptr<FieldExpr>> field_exprs_not_in_aggr;
-    // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
-    auto collect_aggr_exprs = [&aggr_exprs](Expression * expr) {
-      if (expr->type() == ExprType::AGGRFUNCTION) {
-        aggr_exprs.emplace_back(static_cast<AggrFuncExpr*>(static_cast<AggrFuncExpr*>(expr)->deep_copy().release()));
-      }
-    };
-    // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
-    auto collect_field_exprs = [&field_exprs_not_in_aggr](Expression * expr) {
-      if (expr->type() == ExprType::FIELD) {
-        field_exprs_not_in_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
-      }
-    };
+      std::vector<std::unique_ptr<AggrFuncExpr>> aggr_exprs;
+      std::vector<std::unique_ptr<FieldExpr>> field_exprs_not_in_aggr;
+      // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
+      auto collect_aggr_exprs = [&aggr_exprs](Expression * expr) {
+        if (expr->type() == ExprType::AGGRFUNCTION) {
+          aggr_exprs.emplace_back(static_cast<AggrFuncExpr*>(static_cast<AggrFuncExpr*>(expr)->deep_copy().release()));
+        }
+      };
+      // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
+      auto collect_field_exprs = [&field_exprs_not_in_aggr](Expression * expr) {
+        if (expr->type() == ExprType::FIELD) {
+          field_exprs_not_in_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
+        }
+      };
     // do extract
     for (auto& project : projects) {
       project->traverse(collect_aggr_exprs);
@@ -381,6 +383,51 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     }
   }
 
+    OrderByStmt *orderby_stmt = nullptr;
+    // 4. create orderby stmt
+    // - 先提取select clause 后的 field_expr(非agg_expr中的)，和agg_expr，这里提取时已经不需要再进行 check 了，因为在 select clause
+    // - order by 后的 expr 放在 create order by stmt 中进行 check field
+    if(select_sql.orderbys.size() > 0)
+    {
+        // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
+        // std::vector<std::unique_ptr<AggrFuncExpr>> aggr_exprs;
+        // std::vector<std::unique_ptr<FieldExpr>> field_exprs_not_in_aggr;
+        std::vector<std::unique_ptr<Expression>> expr_for_orderby;
+        // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
+        auto collect_aggr_exprs = [&expr_for_orderby](Expression * expr) {
+          if (expr->type() == ExprType::AGGRFUNCTION) {
+            expr_for_orderby.emplace_back(static_cast<AggrFuncExpr*>(static_cast<AggrFuncExpr*>(expr)->deep_copy().release()));
+          }
+        };
+        // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
+        auto collect_field_exprs = [&expr_for_orderby](Expression * expr) {
+          if (expr->type() == ExprType::FIELD) {
+            expr_for_orderby.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
+          }
+        };
+      // do extract
+      for (auto& project : projects) {
+        project->traverse(collect_aggr_exprs);
+        project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+      }
+      // do check field
+      for (int i = 0 ; i < static_cast<int>(select_sql.orderbys.size()) ; i++){
+        Expression* expr = select_sql.orderbys[i].expr;
+        if (rc = expr->traverse_check(check_field); rc != RC::SUCCESS) {
+        LOG_WARN("project expr traverse check_field error!");
+        return rc;
+        }
+      }
+      rc = OrderByStmt::create(db,
+        default_table,
+        &table_map,
+        select_sql.orderbys,
+        orderby_stmt,
+        std::move(expr_for_orderby));
+
+      select_sql.orderbys.clear();
+    }
+
   // everything alright
   // NOTE: 此时 select_sql 原有的部分信息已被移除 后续不得使用
   SelectStmt *select_stmt = new SelectStmt();
@@ -389,6 +436,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   select_stmt->projects_.swap(projects);
   select_stmt->filter_stmt_ = filter_stmt; // maybe nullptr
   select_stmt->groupby_stmt_ = groupby_stmt; // maybe nullptr
+  select_stmt->orderby_stmt_ = orderby_stmt; // mayve nullptr
   stmt = select_stmt;
   return RC::SUCCESS;
 }

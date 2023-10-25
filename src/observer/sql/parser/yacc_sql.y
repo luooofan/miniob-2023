@@ -118,6 +118,10 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         LENGTH
         ROUND
         DATE_FORMAT
+        ORDER
+        GROUP
+        BY
+        ASC
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -139,6 +143,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   std::vector<RelAttrSqlNode> *     rel_attr_list;
   InnerJoinSqlNode *                inner_joins;
   std::vector<InnerJoinSqlNode> *   inner_joins_list;
+  OrderBySqlNode*                   orderby_unit;
+  std::vector<OrderBySqlNode> *     orderby_unit_list;
   char *                            string;
   int                               number;
   float                             floats;
@@ -180,6 +186,9 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <number>              aggr_func_type
 %type <expression>          func_expr
 %type <number>              sys_func_type
+%type <orderby_unit>        sort_unit
+%type <orderby_unit_list>   sort_list
+%type <orderby_unit_list>   opt_order_by
 %type <expression_list>     expression_list
 %type <update_kv_list>      update_kv_list
 %type <update_kv>           update_kv
@@ -716,7 +725,7 @@ select_stmt:        /*  select 语句的语法解析树*/
         delete $2;
       }
     }
-    | SELECT select_attr FROM from_node from_list where
+    | SELECT select_attr FROM from_node from_list where opt_order_by
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -733,6 +742,10 @@ select_stmt:        /*  select 语句的语法解析树*/
       if ($6 != nullptr) {
         $$->selection.conditions.swap(*$6);
         delete $6;
+      }
+      if ($7 != nullptr) {
+        $$->selection.orderbys.swap(*$7);
+        delete $7;
       }
       delete $4;
     }
@@ -958,6 +971,53 @@ condition:
       $$->right_expr = value_expr;
     };
 
+sort_unit:
+	expression
+	{
+    $$ = new OrderBySqlNode();//默认是升序
+    $$->expr = $1;
+    $$->is_asc = true;
+	}
+	|
+	expression DESC
+	{
+    $$ = new OrderBySqlNode();
+    $$->expr = $1;
+    $$->is_asc = false;
+	}
+	|
+	expression ASC
+	{
+    $$ = new OrderBySqlNode();//默认是升序
+    $$->expr = $1;
+    $$->is_asc = true;
+	}
+	;
+sort_list:
+	sort_unit
+	{
+    $$ = new std::vector<OrderBySqlNode>;
+    $$->emplace_back(*$1);
+    delete $1;
+	}
+  |
+	sort_unit COMMA sort_list
+	{
+    $3->emplace_back(*$1);
+    $$ = $3;
+    delete $1;
+	}
+	;
+opt_order_by:
+	/* empty */ {
+   $$ = nullptr;
+  }
+	| ORDER BY sort_list
+	{
+      $$ = $3;
+      std::reverse($$->begin(),$$->end());
+	}
+	;
 comp_op:
       EQ { $$ = EQUAL_TO; }
     | LT { $$ = LESS_THAN; }
