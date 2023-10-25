@@ -269,7 +269,7 @@ class MiniObClient:
   测试客户端。使用TCP连接，向服务器发送命令并反馈结果
   '''
 
-  def __init__(self, server_port: int, server_socket: str, time_limit:int = 10):
+  def __init__(self, server_port: int, server_socket: str, time_limit:int = 300):
     if (server_port < 0 or server_port > 65535) and server_socket is None:
       raise(Exception("Invalid server port: " + str(server_port)))
 
