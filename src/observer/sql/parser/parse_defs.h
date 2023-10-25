@@ -23,6 +23,7 @@ See the Mulan PSL v2 for more details. */
 
 class Expression;
 class FieldExpr;
+class OrderByUnit;
 
 typedef enum { AGG_MAX, AGG_MIN, AGG_SUM, AGG_AVG, AGG_COUNT, AGGR_FUNC_TYPE_NUM } AggrFuncType;
 typedef enum { SYS_FUNC_LENGTH, SYS_FUNC_ROUND, SYS_FUNC_DATE_FORMAT,SYS_FUNC_TYPE_NUM } SysFuncType;
@@ -88,6 +89,12 @@ struct GroupBySqlNode
   std::vector<FieldExpr *> exprs_;
 };
 
+struct OrderBySqlNode
+{
+  Expression * expr;
+  bool is_asc;// true 为升序
+};
+
 /**
  * @brief 描述一串 inner join
  * @ingroup SQLParser
@@ -116,6 +123,7 @@ struct SelectSqlNode
   std::vector<Expression *>       project_exprs; ///< attributes in select clause
   std::vector<InnerJoinSqlNode>   relations;///< 查询的表
   std::vector<ConditionSqlNode>   conditions;    ///< 查询条件，使用AND串联起来多个条件
+  std::vector<OrderBySqlNode>     orderbys; ///< attributes in order clause
 };
 
 /**

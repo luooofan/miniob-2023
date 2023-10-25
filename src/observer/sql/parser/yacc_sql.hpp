@@ -112,12 +112,16 @@ extern int yydebug;
     LENGTH = 318,
     ROUND = 319,
     DATE_FORMAT = 320,
-    NUMBER = 321,
-    FLOAT = 322,
-    ID = 323,
-    SSS = 324,
-    DATE_STR = 325,
-    UMINUS = 326
+    ORDER = 321,
+    GROUP = 322,
+    BY = 323,
+    ASC = 324,
+    NUMBER = 325,
+    FLOAT = 326,
+    ID = 327,
+    SSS = 328,
+    DATE_STR = 329,
+    UMINUS = 330
   };
 #endif
 
@@ -125,7 +129,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 145 "yacc_sql.y"
+#line 149 "yacc_sql.y"
 
   ParsedSqlNode *                   sql_node;
   ConditionSqlNode *                condition;
@@ -145,12 +149,14 @@ union YYSTYPE
   std::vector<RelAttrSqlNode> *     rel_attr_list;
   InnerJoinSqlNode *                inner_joins;
   std::vector<InnerJoinSqlNode> *   inner_joins_list;
+  OrderBySqlNode*                   orderby_unit;
+  std::vector<OrderBySqlNode> *     orderby_unit_list;
   char *                            string;
   int                               number;
   float                             floats;
   bool                              boolean;
 
-#line 154 "yacc_sql.hpp"
+#line 160 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

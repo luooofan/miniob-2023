@@ -27,6 +27,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/explain_logical_operator.h"
 #include "sql/operator/update_logical_operator.h"
 #include "sql/operator/groupby_logical_operator.h"
+#include "sql/operator/orderby_logical_operator.h"
 
 #include "sql/stmt/stmt.h"
 #include "sql/stmt/calc_stmt.h"
@@ -37,6 +38,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/delete_stmt.h"
 #include "sql/stmt/explain_stmt.h"
 #include "sql/stmt/update_stmt.h"
+#include "sql/stmt/orderby_stmt.h"
 
 using namespace std;
 
@@ -212,6 +214,20 @@ RC LogicalPlanGenerator::create_plan(
       top_oper = std::move(groupby_oper);
     }
   }
+  if (select_stmt->orderby_stmt()) {
+    unique_ptr<LogicalOperator> orderby_oper;
+    rc = create_plan(select_stmt->orderby_stmt(), orderby_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create orderby logical plan. rc=%s", strrc(rc));
+      return rc;
+    }
+    if(orderby_oper){
+      if (top_oper) {
+        orderby_oper->add_child(std::move(top_oper));
+      }
+      top_oper = std::move(orderby_oper);
+    }
+  }
   {
     unique_ptr<LogicalOperator> project_oper(new ProjectLogicalOperator(std::move(select_stmt->projects())));
     ASSERT(project_oper,"ERROR!");
@@ -276,6 +292,20 @@ RC LogicalPlanGenerator::create_plan(GroupByStmt *group_by_stmt, unique_ptr<Logi
                                std::move(group_by_stmt->get_agg_exprs()),
                                std::move(group_by_stmt->get_field_exprs())));
   logical_operator = std::move(groupby_oper);
+  return RC::SUCCESS;
+}
+
+RC LogicalPlanGenerator::create_plan(OrderByStmt *order_by_stmt, unique_ptr<LogicalOperator> &logical_operator)
+{
+  if (order_by_stmt == nullptr) {
+    logical_operator = nullptr;
+    return RC::SUCCESS;
+  }
+
+  unique_ptr<LogicalOperator> orderby_oper(
+    new OrderByLogicalOperator(std::move(order_by_stmt->get_orderby_units()),
+                               std::move(order_by_stmt->get_exprs())));
+  logical_operator = std::move(orderby_oper);
   return RC::SUCCESS;
 }
 

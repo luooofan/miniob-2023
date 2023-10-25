@@ -726,3 +726,77 @@ public:
 
   RC find_cell(const TupleCellSpec &spec, Value &cell) const { return RC::INVALID_ARGUMENT; }
 };
+
+
+/**
+ * @brief 一些常量值组成的Tuple,用于 orderby 算子中
+ * @ingroup Tuple
+ */
+class SplicedTuple : public Tuple 
+{
+public:
+  SplicedTuple() = default;
+  virtual ~SplicedTuple() = default;
+
+  void set_cells(const std::vector<Value>* cells)
+  {
+    cells_ = cells;
+  }
+
+  virtual int cell_num() const override
+  {
+    return static_cast<int>((*cells_).size());
+  }
+
+  virtual RC cell_at(int index, Value &cell) const override
+  {
+    if (index < 0 || index >= cell_num()) {
+      return RC::NOTFOUND;
+    }
+
+    cell = (*cells_)[index];
+    return RC::SUCCESS;
+  }
+
+  RC find_cell(const TupleCellSpec &spec, Value &cell) const override
+  {
+    // 先从字段表达式里面找
+    for (size_t i = 0; i < exprs_.size(); ++i) {
+      if(exprs_[i]->type() == ExprType::FIELD){
+        const FieldExpr * expr =static_cast<FieldExpr*>(exprs_[i].get());
+        if (std::string(expr->field_name()) == std::string(spec.field_name()) && 
+            std::string(expr->table_name()) == std::string(spec.table_name()) ) {
+            cell = (*cells_)[i];
+          LOG_INFO("Field is found in field_exprs");
+          return RC::SUCCESS;
+        }
+      }else if(exprs_[i]->type() == ExprType::AGGRFUNCTION){
+        if(spec.alias() == exprs_[i]->name()){
+          cell = (*cells_)[i];
+          return RC::SUCCESS;
+        }
+      }else{
+        LOG_WARN("find cell in SplicedTuple error!");
+        return RC::INTERNAL;
+      }
+    }
+    LOG_WARN(" not find cell in SplicedTuple ");
+    return RC::NOTFOUND;
+  }
+
+  RC init(std::vector<std::unique_ptr<Expression>> &&exprs)
+  {
+    exprs_ = std::move(exprs);
+    return RC::SUCCESS;
+  }
+  
+  std::vector<std::unique_ptr<Expression>> &exprs()
+  {
+    return exprs_;
+  }
+
+private:
+  const std::vector<Value> *cells_ = nullptr;
+  //在 create order by stmt 之前提取的  select clause 后的 field_expr (非a gg_expr 中的)和 agg_expr
+  std::vector<std::unique_ptr<Expression>> exprs_;
+};
