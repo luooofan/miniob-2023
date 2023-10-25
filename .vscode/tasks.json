@@ -126,6 +126,7 @@
                 "primary-text",
                 "primary-unique",
                 "primary-update",
+                "primary-big-order",
             ],
             "default": "basic"
         },

@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/record/record.h"
 #include "sql/stmt/filter_stmt.h"
 #include "storage/field/field.h"
+#include <chrono>
 
 OrderByPhysicalOperator::OrderByPhysicalOperator(std::vector<std::unique_ptr<OrderByUnit>>&& orderby_units,
   std::vector<std::unique_ptr<Expression>> &&exprs)
@@ -42,6 +43,7 @@ RC OrderByPhysicalOperator::open(Trx *trx)
 
 RC OrderByPhysicalOperator::fetch_and_sort_tables()
 {
+  LOG_WARN("niuxn:begin sort");
   RC rc = RC::SUCCESS;
 
   int index = 0;
@@ -51,7 +53,12 @@ RC OrderByPhysicalOperator::fetch_and_sort_tables()
 
   std::vector<Value> row_values(tuple_.exprs().size());//缓存每一行
   int row_values_index = 0;
+  int i = 0;
   while (RC::SUCCESS == (rc = children_[0]->next())) {
+    if(i++ % 2500 == 0)
+    {
+      LOG_WARN("niuxn:is sorting, %d",i);
+    }
     row_values_index = 0;//每一行都从 0 开始填
     // construct pair sort table
     // 1 cons vector<cell>
@@ -116,7 +123,7 @@ RC OrderByPhysicalOperator::fetch_and_sort_tables()
     return false;  // completely same
   };
   std::sort(pair_sort_table.begin(), pair_sort_table.end(), cmp);
-  LOG_INFO("Sort Table Success In SortOperator");
+  LOG_INFO("niuxn:Sort Table Success In SortOperator");
 
   // fill ordered_idx_
   for (size_t i = 0; i < pair_sort_table.size(); ++i) {

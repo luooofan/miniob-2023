@@ -30,7 +30,10 @@ std::string month_name[] ={"","January","February","March","April","May","June",
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
-  return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
+  if(is_first_)
+    return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value,const_cast<int&>(index_));
+  else
+    return tuple.cell_at(index_,value);
 }
 
 RC ValueExpr::get_value(const Tuple &tuple, Value &value) const
@@ -575,8 +578,9 @@ AttrType AggrFuncExpr::value_type() const
 RC AggrFuncExpr::get_value(const Tuple &tuple, Value &cell) const
 {
   TupleCellSpec spec(name().c_str());
+  int index = 0;
   // spec.set_agg_type(get_aggr_func_type());
-  return tuple.find_cell(spec,cell);
+  return tuple.find_cell(spec,cell,index);
 }
 
 RC SysFuncExpr::get_func_length_value(const Tuple &tuple, Value &value) const

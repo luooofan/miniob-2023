@@ -434,7 +434,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       // do check field
       for (int i = 0 ; i < static_cast<int>(select_sql.orderbys.size()) ; i++){
         Expression* expr = select_sql.orderbys[i].expr;
-        if (rc = expr->traverse_check(check_field); rc != RC::SUCCESS) {
+        if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
         LOG_WARN("project expr traverse check_field error!");
         return rc;
         }
