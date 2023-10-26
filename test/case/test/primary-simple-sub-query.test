@@ -44,3 +44,7 @@ select * from ssq_1 where col1 = (select ssq_2.col2 from ssq_2);
 select * from ssq_1 where col1 = (select * from ssq_2);
 select * from ssq_1 where col1 in (select * from ssq_2);
 select * from ssq_1 where col1 not in (select * from ssq_2);
+
+-- sort select * from ssq_1 where exists (select ssq_2.id from ssq_2 where ssq_1.id > ssq_2.id);
+
+select * from ssq_1 where col1 not in (2,null);

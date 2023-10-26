@@ -48,7 +48,11 @@ static void wildcard_fields(const Table *table, const std::string& alias, std::v
   }
 }
 
-RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
+// parent_table_map 是父查询中的 table_map，这里只需要父查询的 table map 即可
+// tables table_alias_map local_table_map 都不需要
+// 嵌套子查询 的情况下在 parent table map 中累积 这里不把它维护成 vector
+RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
+    std::unordered_map<std::string, Table *> parent_table_map)
 {
   if (nullptr == db) {
     LOG_WARN("invalid argument. db is null");
@@ -61,13 +65,13 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   // 收集表信息的同时这里做了 predicate expr 下推
   // 处理结果保存在 join_tables 中
   // 针对表的别名 不能重复
-  std::vector<Table *> tables; // 收集所有 table
+  std::vector<Table *> tables; // 收集所有 table 主要用于解析 select *
   std::unordered_map<std::string, std::string> table_alias_map; // <table src name, table alias name>
-  std::unordered_map<std::string, Table *> table_map; // 收集所有 table
+  std::unordered_map<std::string, Table *> table_map = parent_table_map; // 收集所有 table 包括所有祖先查询的 table
   std::unordered_map<std::string, Table *> local_table_map; // 每次收集第二级的 table
   std::vector<JoinTables> join_tables;
 
-  // collect tables in `from` statement
+  // collect tables info in `from` statement
   auto check_and_collect_tables = [&](const std::pair<std::string, std::string>& table_name_pair) {
     const std::string& src_name = table_name_pair.first;
     const std::string& alias = table_name_pair.second;
@@ -98,7 +102,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   };
 
   // 先收集所有的 condition 用于后续下推
-  // conditions: t1 inner join t2 on xxx and xxx inner join t3 on xxx and xxx
+  // conditions: from t1 inner join t2 on "xxx" and "xxx" inner join t3 on "xxx" and "xxx" where "xxx" and "xxx"
   // NOTE: 这里并没有 clear 原来的 condition 信息，后续要进行语义检查
   std::vector<ConditionSqlNode> all_conditions = select_sql.conditions;
   for (size_t i = 0; i < select_sql.relations.size(); ++i) {
@@ -111,15 +115,19 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     // conditions.clear();
   }
 
-  // 判断表达式是否可以下推
-  auto check_can_push_down = [&local_table_map](Expression* expr) -> RC {
-    // 这里其实不会有聚集函数表达式
+  // 判断条件表达式是否可以下推
+  auto check_cond_can_push_down = [&local_table_map](Expression* expr) -> RC {
+    // 这里其实不会有聚集函数表达式 having 中才会有
     if (expr->type() == ExprType::AGGRFUNCTION) {
       // aggr func expr do not push down
       return RC::INTERNAL;
     }
+    // 子查询表达式暂时不允许下推
+    if (expr->type() == ExprType::SUBQUERY) {
+      return RC::INTERNAL;
+    }
     // 对于字段表达式 其实应该先 check_field 再判断能否下推
-    // 但是这里把 check_filed 和下推是分开来做的
+    // 但是这里 check_filed 和下推是分开来做的 这个函数里只负责能否下推的逻辑
     if (expr->type() == ExprType::FIELD) {
       FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
       if (0 != local_table_map.count(field_expr->get_table_name())) {
@@ -131,9 +139,9 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   };
 
   // 判断 condition 是否可以下推
-  auto cond_is_ok = [&check_can_push_down, &local_table_map](const ConditionSqlNode& node) ->bool {
-    return RC::SUCCESS == node.left_expr->traverse_check(check_can_push_down) &&
-            RC::SUCCESS == node.right_expr->traverse_check(check_can_push_down);
+  auto cond_is_ok = [&check_cond_can_push_down, &local_table_map](const ConditionSqlNode& node) ->bool {
+    return RC::SUCCESS == node.left_expr->traverse_check(check_cond_can_push_down) &&
+            RC::SUCCESS == node.right_expr->traverse_check(check_cond_can_push_down);
   };
 
   // 从 all_conditions 中挑选出可以下推的 conditions
@@ -175,19 +183,21 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     return rc;
   };
 
-  auto check_field_for_conditions = [&table_map, &table_alias_map, &tables, &db](Expression *expr) {
+  // 对 join on conditions 进行语义检查
+  auto check_for_conditions = [&table_map, &table_alias_map, &tables, &db](Expression *expr) {
     if (expr->type() == ExprType::FIELD) {
       FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
       // 因为 tables 一定至少有一个 所以这里可以不传入 default table
-      return field_expr->check_field(table_map, table_alias_map, tables, db, nullptr);
+      return field_expr->check_field(table_map, tables, nullptr, table_alias_map);
     }
+    // 先假设 join on conditions 中不会有子查询
     return RC::SUCCESS;
   };
 
-  // 判断 condition 中的 fieldexpr 是否符合语义
-  auto cond_checked_ok = [&check_field_for_conditions, &local_table_map](const ConditionSqlNode& node) ->bool {
-    return RC::SUCCESS == node.left_expr->traverse_check(check_field_for_conditions) &&
-            RC::SUCCESS == node.right_expr->traverse_check(check_field_for_conditions);
+  // 判断 condition 是否符合语义
+  auto cond_checked_ok = [&check_for_conditions, &local_table_map](const ConditionSqlNode& node) ->bool {
+    return RC::SUCCESS == node.left_expr->traverse_check(check_for_conditions) &&
+            RC::SUCCESS == node.right_expr->traverse_check(check_for_conditions);
   };
 
   // xxx from (t1 inner join t2), (t3), (t4 inner join t5) where xxx
@@ -195,6 +205,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     // t1 inner join t2 on xxx inner join t3 on xxx
     InnerJoinSqlNode& relations = select_sql.relations[i]; // why not const : will clear its conditions
     local_table_map.clear();
+    // local_table_map = parent_table_map; // from clause 中的 expr 可以使用父查询的表中的字段
 
     // construct JoinTables
     JoinTables jt;
@@ -202,6 +213,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     // base relation: **t1** inner join t2 on xxx inner join t3 on xxx
     RC rc = process_one_relation(relations.base_relation, jt);
     if (RC::SUCCESS != rc) {
+      LOG_WARN("Create SelectStmt: From Clause: Process Base Relation %s Failed!", relations.base_relation.first.c_str());
       return rc;
     }
 
@@ -222,6 +234,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
       }
       conditions[i].clear();
     }
+    conditions.clear();
 
     // push jt to join_tables
     join_tables.emplace_back(std::move(jt));
@@ -229,7 +242,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   // 到此为止 已经把 from clause 中的 fieldexpr 都检查完毕
 
   // 2. collect query exprs in `select` statement
-  // 语义解析 check & 设置表达式 name 用于客户端输出的表头
+  // 语义解析 check & 设置表达式 name alias 用于客户端输出的表头
   // 要处理 *, *.*, t1.* 这种情况
   // 要 check field 判断**所有** FieldExpr 是否合法：有一个唯一对应的 table 即合法 不能没有表 也不能出现歧义
   bool is_single_table = (tables.size() == 1);
@@ -239,9 +252,10 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     default_table = tables[0];
   }
 
-  // 检查所有的 FieldExpr 是否合法 并且判断一下是否有 AggrFuncExpr
+  // 检查所有的 FieldExpr 和 SysFuncExpr 是否合法 并且判断一下是否有 AggrFuncExpr
+  // projects 中不会出现 subquery
   bool has_aggr_func_expr = false;
-  auto check_field = [&table_map, &table_alias_map, &tables, &db, &default_table, &has_aggr_func_expr](Expression *expr) {
+  auto check_project_expr = [&table_map, &tables, &default_table, &table_alias_map, &has_aggr_func_expr](Expression *expr) {
     if (expr->type() == ExprType::AGGRFUNCTION) {
       has_aggr_func_expr = true;
     } else if (expr->type() == ExprType::SYSFUNCTION) {
@@ -249,7 +263,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
       return sysfunc_expr->check_param_type_and_number();
     } else if (expr->type() == ExprType::FIELD) {
       FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
-      return field_expr->check_field(table_map, table_alias_map, tables, db, default_table);
+      return field_expr->check_field(table_map, tables, default_table, table_alias_map);
     }
     return RC::SUCCESS;
   };
@@ -285,14 +299,14 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
           wildcard_fields(table, std::string(), projects, is_single_table);
         }
       } else { // t1.c1 or c1
-        if(rc = field_expr->check_field(table_map, table_alias_map, tables, db, default_table); rc != RC::SUCCESS) {
+        if(rc = field_expr->check_field(table_map, tables, default_table, table_alias_map); rc != RC::SUCCESS) {
           LOG_INFO("expr->check_field error!");
           return rc;
         }
         projects.emplace_back(expr);
       }
     } else {
-      if (rc = expr->traverse_check(check_field); rc != RC::SUCCESS) {
+      if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
         LOG_WARN("project expr traverse check_field error!");
         return rc;
       }

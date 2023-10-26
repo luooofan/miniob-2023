@@ -46,6 +46,8 @@ enum class ExprType
   ARITHMETIC,   ///< 算术运算
   AGGRFUNCTION, ///< 聚集函数
   SYSFUNCTION,  ///< 系统函数
+  SUBQUERY,     ///< 子查询
+  EXPRLIST,     ///< 表达式列表
 };
 
 /**
@@ -163,8 +165,8 @@ public:
   FieldMeta get_field_meta() const { return *field_.meta(); }
 
   RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::unordered_map<std::string, std::string> & table_alias_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table = nullptr);
+    const std::vector<Table *> &tables, Table* default_table = nullptr,
+    const std::unordered_map<std::string, std::string> & table_alias_map = {});
 
   std::unique_ptr<Expression> deep_copy() const override
   {
@@ -728,4 +730,113 @@ public:
 private:
   SysFuncType func_type_;
   std::vector<std::unique_ptr<Expression>> params_;
+};
+
+class SelectStmt;
+class LogicalOperator;
+class PhysicalOperator;
+class SubQueryExpr : public Expression
+{
+public:
+  SubQueryExpr(const SelectSqlNode& sql_node);
+  virtual ~SubQueryExpr();
+
+  RC open(Trx* trx);
+  RC close();
+  bool has_more_row(const Tuple &tuple) const;
+
+  RC get_value(const Tuple &tuple, Value &value) const;
+
+  RC try_get_value(Value &value) const;
+
+  ExprType type() const;
+
+  AttrType value_type() const;
+
+  std::unique_ptr<Expression> deep_copy() const;
+
+  const std::unique_ptr<SelectSqlNode>& get_sql_node() const;
+  void set_select_stmt(SelectStmt* stmt);
+  const std::unique_ptr<SelectStmt>& get_select_stmt() const;
+  void set_logical_oper(std::unique_ptr<LogicalOperator>&& oper);
+  const std::unique_ptr<LogicalOperator>& get_logical_oper();
+  void set_physical_oper(std::unique_ptr<PhysicalOperator>&& oper);
+  const std::unique_ptr<PhysicalOperator>& get_physical_oper();
+
+private:
+  std::unique_ptr<SelectSqlNode> sql_node_;
+  std::unique_ptr<SelectStmt> stmt_;
+  std::unique_ptr<LogicalOperator> logical_oper_;
+  std::unique_ptr<PhysicalOperator> physical_oper_;
+};
+
+class ExprListExpr : public Expression
+{
+public:
+  ExprListExpr(std::vector<Expression*>&& exprs) {
+    for (auto expr : exprs) {
+      exprs_.emplace_back(expr);
+    }
+    exprs.clear();
+  }
+  ExprListExpr(std::vector<std::unique_ptr<Expression>>&& exprs) : exprs_(std::move(exprs)) {}
+  virtual ~ExprListExpr() = default;
+
+  void reset()
+  {
+    cur_idx_ = 0;
+  }
+
+  RC get_value(const Tuple &tuple, Value &value) const override
+  {
+    if (cur_idx_ >= exprs_.size()) {
+      return RC::RECORD_EOF;
+    }
+    return exprs_[const_cast<int&>(cur_idx_)++]->get_value(tuple, value);
+  }
+
+  RC try_get_value(Value &value) const override { return RC::UNIMPLENMENT; }
+
+  ExprType type() const override { return ExprType::EXPRLIST; }
+
+  AttrType value_type() const override { return UNDEFINED; }
+
+  void traverse(const std::function<void(Expression*)>& func, const std::function<bool(Expression*)>& filter) override
+  {
+    if (filter(this)) {
+      for (auto& expr : exprs_) {
+        expr->traverse(func, filter);
+      }
+      func(this);
+    }
+  }
+
+  RC traverse_check(const std::function<RC(Expression*)>& check_func) override
+  {
+    RC rc = RC::SUCCESS;
+    for (auto& expr : exprs_) {
+      if (RC::SUCCESS != (rc = expr->traverse_check(check_func))) {
+        return rc;
+      }
+    }
+    if (RC::SUCCESS != (rc = check_func(this))) {
+      return rc;
+    }
+    return RC::SUCCESS;
+  }
+
+  std::unique_ptr<Expression> deep_copy() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_children;
+    for (auto& expr : exprs_) {
+      new_children.emplace_back(expr->deep_copy());
+    }
+    auto new_expr = std::make_unique<ExprListExpr>(std::move(new_children));
+    new_expr->set_name(name());
+    new_expr->set_alias(alias());
+    return new_expr;
+  }
+private:
+  int cur_idx_ = 0;
+  std::vector<std::unique_ptr<Expression>> exprs_;
 };

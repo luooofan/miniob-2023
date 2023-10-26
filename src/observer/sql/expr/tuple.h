@@ -409,6 +409,7 @@ class JoinedTuple : public Tuple
 {
 public:
   JoinedTuple() = default;
+  JoinedTuple(Tuple* left, Tuple* right) : left_(left), right_(right) {}
   virtual ~JoinedTuple() = default;
 
   void set_left(Tuple *left)
@@ -525,6 +526,15 @@ public:
       field_results_[i].set_expr(std::move(field_exprs[i]));
     }
     field_exprs.clear();
+  }
+  void reset()
+  {
+    for (auto& res : aggr_results_) {
+      res.reset();
+    }
+    for (auto& res : field_results_) {
+      res.reset();
+    }
   }
   void do_aggregate_first()
   {
@@ -648,6 +658,11 @@ public:
         } break;
       }
     }
+    void reset()
+    {
+      count_ = 0;
+      all_null_ = true;
+    }
     const std::string name() const
     {
       return expr_->name();
@@ -674,6 +689,7 @@ public:
     {
       expr_->get_value(tuple, result_); // do nothing for null
     }
+    void reset() {}
     const Value& result() const
     {
       return result_;

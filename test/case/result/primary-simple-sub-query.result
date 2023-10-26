@@ -107,3 +107,11 @@ select * from ssq_1 where col1 in (select * from ssq_2);
 FAILURE
 select * from ssq_1 where col1 not in (select * from ssq_2);
 FAILURE
+
+select * from ssq_1 where exists (select ssq_2.id from ssq_2 where ssq_1.id > ssq_2.id);
+2 | 2 | 12
+3 | 3 | 13.5
+ID | COL1 | FEAT1
+
+select * from ssq_1 where col1 not in (2,null);
+ID | COL1 | FEAT1

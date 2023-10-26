@@ -121,6 +121,8 @@ int get_aggr_func_type(char *func_name)
         INNER
         JOIN
         AS
+        IN
+        EXISTS
         EQ
         LT
         GT
@@ -181,10 +183,12 @@ int get_aggr_func_type(char *func_name)
 %type <condition>           condition
 %type <value>               value
 %type <number>              number
+%type <boolean>             is_null_comp
 %type <boolean>             null_option
 %type <boolean>             unique_option
 %type <boolean>             as_option
 %type <comp>                comp_op
+%type <comp>                exists_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
@@ -197,6 +201,7 @@ int get_aggr_func_type(char *func_name)
 %type <condition_list>      condition_list
 %type <expression_list>     select_attr
 %type <expression>          expression
+%type <expression>          sub_query_expr
 %type <expression>          aggr_func_expr
 %type <expression>          func_expr
 %type <number>              sys_func_type
@@ -762,6 +767,14 @@ join_list:
     }
     ;
 
+sub_query_expr:
+    LBRACE select_stmt RBRACE
+    {
+      $$ = new SubQueryExpr($2->selection); // 子查询中所有的 Expression 都交给 SubQueryExpr 来管理了
+      delete $2;
+    }
+    ;
+
 select_stmt:        /*  select 语句的语法解析树*/
     SELECT select_attr
     {
@@ -839,9 +852,14 @@ expression:
     | expression '/' expression {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::DIV, $1, $3, sql_string, &@$);
     }
-    | LBRACE expression RBRACE {
-      $$ = $2;
+    | LBRACE expression_list RBRACE {
+      if ($2->size() == 1) {
+        $$ = $2->front();
+      } else {
+        $$ = new ExprListExpr(std::move(*$2));
+      }
       $$->set_name(token_name(sql_string, &@$));
+      delete $2;
     }
     | '-' expression %prec UMINUS {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
@@ -856,13 +874,17 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
-    |aggr_func_expr{
+    | aggr_func_expr {
       $$ = $1;
     }
-    |func_expr{
+    | func_expr {
+      $$ = $1;
+    }
+    | sub_query_expr {
       $$ = $1;
     }
     ;
+
 aggr_func_expr:
     ID LBRACE expression RBRACE
     {
@@ -966,6 +988,18 @@ condition_list:
       delete $1;
     }
     ;
+
+is_null_comp:
+    IS NULL_T
+    {
+      $$ = true;
+    }
+    | IS NOT NULL_T
+    {
+      $$ = false;
+    }
+    ;
+
 condition:
     expression comp_op expression
     {
@@ -974,28 +1008,29 @@ condition:
       $$->right_expr = $3;
       $$->comp = $2;
     }
-    | expression IS NULL_T
+    | expression is_null_comp
     {
       $$ = new ConditionSqlNode;
       $$->left_expr = $1;
-      $$->comp = IS_NULL;
+      $$->comp = $2 ? IS_NULL : IS_NOT_NULL;
       ValueExpr *value_expr = new ValueExpr();
       Value val;
       val.set_null();
       value_expr->set_value(val);
       $$->right_expr = value_expr;
     }
-    | expression IS NOT NULL_T
+    | exists_op expression
     {
       $$ = new ConditionSqlNode;
-      $$->left_expr = $1;
-      $$->comp = IS_NOT_NULL;
       ValueExpr *value_expr = new ValueExpr();
       Value val;
       val.set_null();
       value_expr->set_value(val);
-      $$->right_expr = value_expr;
-    };
+      $$->left_expr = value_expr;
+      $$->right_expr = $2;
+      $$->comp = $1;
+    }
+    ;
 
 comp_op:
       EQ { $$ = EQUAL_TO; }
@@ -1006,6 +1041,13 @@ comp_op:
     | NE { $$ = NOT_EQUAL; }
     | LIKE { $$ = LIKE_OP;}
     | NOT LIKE {$$ = NOT_LIKE_OP;}
+    | IN { $$ = IN_OP; }
+    | NOT IN { $$ = NOT_IN_OP; }
+    ;
+
+exists_op:
+    EXISTS { $$ = EXISTS_OP; }
+    | NOT EXISTS { $$ = NOT_EXISTS_OP; }
     ;
 
 load_data_stmt:
