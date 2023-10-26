@@ -228,7 +228,19 @@ std::string Value::to_string() const
 
 int Value::compare(const Value &other) const
 {
-  ASSERT(!this->is_null() && !other.is_null(), "Cound Not Be Null!");
+  //ASSERT(!this->is_null() && !other.is_null(), "Cound Not Be Null!");
+  // null compare null ,return 0 
+  if(this->is_null() || other.is_null())
+  {
+    if(this->is_null() && other.is_null() )
+    {
+      return 0;
+    }
+    else
+    {
+      return -1;
+    }
+  }
   if (this->attr_type_ == other.attr_type_) {
     switch (this->attr_type_) {
       case INTS: {
