@@ -391,7 +391,43 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       //提取所有不在 aggexpr 中的 field_expr，用于语义检查
       project->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
     }
-
+    //针对 having 后的表达式，需要做和上面相同的三个提取过程
+    // select id, max(score) from t_group_by group by id having count(*)>5;
+    if (!select_sql.having_conditions.empty()) {
+      rc = FilterStmt::create(db,
+          default_table,
+          &table_map,
+          select_sql.having_conditions.data(),
+          static_cast<int>(select_sql.having_conditions.size()),
+          having_filter_stmt);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("cannot construct filter stmt");
+        return rc;
+      }
+      // a. create filter stmt 中 ，having 子句中的已经内容进行 check_filed 了,并且 如果是 agg_expr，就先取出来
+      auto & filter_units = having_filter_stmt->filter_units();
+      for(FilterUnit* unit: filter_units)
+      {
+          Expression * unit_left = unit->left().get(); //应该不用深拷贝吧
+          Expression * unit_right = unit->right().get();
+          if(unit_left)
+          {
+            unit_left->traverse(collect_aggr_exprs);//提取所有 aggexpr
+            unit_left->traverse(collect_field_exprs );//提取 select clause 中的所有 field_expr,传递给groupby stmt
+            //project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+            //提取所有不在 aggexpr 中的 field_expr，用于语义检查
+            unit_left->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+          }
+          if(unit_right)
+          {
+            unit_right->traverse(collect_aggr_exprs);//提取所有 aggexpr
+            unit_right->traverse(collect_field_exprs );//提取 select clause 中的所有 field_expr,传递给groupby stmt
+            //project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+            //提取所有不在 aggexpr 中的 field_expr，用于语义检查
+            unit_right->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+          }
+      }
+    }
     // 2. 语义检查 check:
     // - 聚集函数参数个数、参数为 * 的检查是在 syntax parser 完成
     // - 聚集函数中的字段 OK select clause 检查过了
@@ -455,19 +491,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     select_sql.groupby_exprs.clear();
     // 4.在物理计划生成阶段向 groupby_operator 下挂一个 orderby_operator
 
-    // 5.having
-    if (!select_sql.having_conditions.empty()) {
-      rc = FilterStmt::create(db,
-          default_table,
-          &table_map,
-          select_sql.having_conditions.data(),
-          static_cast<int>(select_sql.having_conditions.size()),
-          having_filter_stmt);
-      if (rc != RC::SUCCESS) {
-        LOG_WARN("cannot construct filter stmt");
-        return rc;
-      }
-    }
+
   }
 
     OrderByStmt *orderby_stmt = nullptr;
