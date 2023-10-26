@@ -481,17 +481,23 @@ RC Table::init_record_handler(const char *base_dir)
 
 RC Table::init_text_handler(const char *base_dir)
 {
+  RC rc = RC::SUCCESS;
   std::string text_file = table_text_file(base_dir, table_meta_.name());
 
-  RC rc = BufferPoolManager::instance().open_file(text_file.c_str(), text_buffer_pool_);
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR("Failed to open disk buffer pool for file:%s. rc=%d:%s", text_file.c_str(), rc, strrc(rc));
-    return rc;
+  bool exist = false;
+  int fd = ::open(text_file.c_str(), O_RDONLY, 0600);
+  if (fd > 0) exist = true;
+  close(fd);
+  
+  if (exist) {
+      rc = BufferPoolManager::instance().open_file(text_file.c_str(), text_buffer_pool_);
+    if (rc != RC::SUCCESS) {
+      LOG_ERROR("Failed to open disk buffer pool for file:%s. rc=%d:%s", text_file.c_str(), rc, strrc(rc));
+      return rc;
+    }
   }
-
   return rc;
 }
-
 RC Table::get_record_scanner(RecordFileScanner &scanner, Trx *trx, bool readonly)
 {
   RC rc = scanner.open_scan(this, *data_buffer_pool_, trx, readonly, nullptr);
