@@ -83,6 +83,10 @@ public:
   {
     return filter_stmt_;
   }
+  FilterStmt *having_stmt() const
+  {
+    return having_stmt_;
+  }
   GroupByStmt *groupby_stmt() const
   {
     return groupby_stmt_;
@@ -101,4 +105,5 @@ private:
   FilterStmt *filter_stmt_ = nullptr;
   GroupByStmt * groupby_stmt_ = nullptr;
   OrderByStmt * orderby_stmt_ = nullptr;
+  FilterStmt * having_stmt_ = nullptr;
 };

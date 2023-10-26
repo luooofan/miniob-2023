@@ -354,65 +354,125 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
   }
 
 
-  // TODO 还未在语法层面支持 group by clause
   GroupByStmt *groupby_stmt = nullptr;
+  FilterStmt *having_filter_stmt = nullptr;
   // 有聚集函数表达式 或者有 group by clause 就要添加 group by stmt
-  if (has_aggr_func_expr /* || nullptr != select_sql.groupby_ */) {
+  if (has_aggr_func_expr  || select_sql.groupby_exprs.size() > 0) {
     // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
       std::vector<std::unique_ptr<AggrFuncExpr>> aggr_exprs;
-      std::vector<std::unique_ptr<FieldExpr>> field_exprs_not_in_aggr;
+
+      //select 子句中出现的所有fieldexpr 都需要传递收集起来,
+      std::vector<std::unique_ptr<FieldExpr>> field_exprs;//这个 vector 需要传递给 order by 算子
+      std::vector<std::unique_ptr<Expression>> exprs_not_aggr; //select 后的所有非 aggrexpr,用来判断语句是否合法 
       // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
       auto collect_aggr_exprs = [&aggr_exprs](Expression * expr) {
         if (expr->type() == ExprType::AGGRFUNCTION) {
           aggr_exprs.emplace_back(static_cast<AggrFuncExpr*>(static_cast<AggrFuncExpr*>(expr)->deep_copy().release()));
         }
       };
-      // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
-      auto collect_field_exprs = [&field_exprs_not_in_aggr](Expression * expr) {
+      // 用于从 project exprs 中提取所有field expr,
+      auto collect_field_exprs = [&field_exprs](Expression * expr) {
         if (expr->type() == ExprType::FIELD) {
-          field_exprs_not_in_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
+          field_exprs.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
         }
       };
+      // 用于从 project exprs 中提取所有不是 aggr func expr 的 expr
+      // auto collect_exprs_not_aggexpr = [&exprs_not_aggr](Expression * expr) {
+      //   exprs_not_aggr.emplace_back(expr->deep_copy().release());
+      // };
     // do extract
     for (auto& project : projects) {
       project->traverse(collect_aggr_exprs);
-      project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+      project->traverse(collect_field_exprs );
+      //project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+      //project->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
     }
 
     // 2. 语义检查 check:
     // - 聚集函数参数个数、参数为 * 的检查是在 syntax parser 完成
-    // - 聚集函数中的字段 OK
+    // - 聚集函数中的字段 OK select clause 检查过了
     // - 非聚集函数中的字段应该 必须在 group by 的字段中
     // - 没有 group by clause 时，不应该有非聚集函数中的字段
     // 当前没有 group by，所以只 check 一下有没有不在聚集函数中的字段即可
-    if (!field_exprs_not_in_aggr.empty()) {
-      LOG_ERROR("No Group By. But Has Fields Not In Aggr Func");
+    if (!exprs_not_aggr.empty() && select_sql.groupby_exprs.size() == 0) {
+      LOG_WARN("No Group By. But Has Fields Not In Aggr Func");
       return RC::INVALID_ARGUMENT;
     }
-    
+    //有 group by ，要判断select clause 中的 expr (除 agg_expr) 是否在 group by 后存在
+    //select min(c1), c2+c3 from t1 group by c2+c3;
+    //先提取select 后的非 aggexpr ，然后判断其是否是 groupby 中
+    if(select_sql.groupby_exprs.size() > 0)
+    {
+      // 1.先检查 field
+      // do check field
+      for (int i = 0 ; i < static_cast<int>(select_sql.groupby_exprs.size()) ; i++){
+        Expression* expr = select_sql.groupby_exprs[i];
+        if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
+        LOG_WARN("project expr traverse check_field error!");
+        return rc;
+        }
+      }
+
+      std::vector<Expression*> &groupby_exprs =  select_sql.groupby_exprs;
+      auto check_expr_in_groupby_exprs = [&groupby_exprs](std::unique_ptr<Expression>& expr) {
+        bool res = false;
+        for(auto tmp:groupby_exprs)
+        {
+          if(expr->name() == tmp->name()) //通过表达式的名称进行判断
+            return true;
+        }
+        return false;
+      };
+
+      for (auto& project : projects)
+      {
+        if(project->type() != ExprType::AGGRFUNCTION)
+        {
+          if(!check_expr_in_groupby_exprs(project))
+          {
+            LOG_WARN("expr not in groupby_exprs");
+            return RC::INVALID_ARGUMENT;
+          }
+        }
+      }
+    }
     // 3. create groupby stmt
     rc = GroupByStmt::create(db,
         default_table,
         &table_map,
-        nullptr, //暂时先传入 nullptr
+        select_sql.groupby_exprs,
         groupby_stmt,
         std::move(aggr_exprs),
-        std::move(field_exprs_not_in_aggr));
+        std::move(field_exprs));
     if (rc != RC::SUCCESS) {
       LOG_WARN("cannot construct groupby stmt");
       return rc;
+    }
+    select_sql.groupby_exprs.clear();
+    // 4.在物理计划生成阶段向 groupby_operator 下挂一个 orderby_operator
+
+    // 5.having
+    if (!select_sql.having_conditions.empty()) {
+      rc = FilterStmt::create(db,
+          default_table,
+          &table_map,
+          select_sql.having_conditions.data(),
+          static_cast<int>(select_sql.having_conditions.size()),
+          having_filter_stmt);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("cannot construct filter stmt");
+        return rc;
+      }
     }
   }
 
     OrderByStmt *orderby_stmt = nullptr;
     // 4. create orderby stmt
     // - 先提取select clause 后的 field_expr(非agg_expr中的)，和agg_expr，这里提取时已经不需要再进行 check 了，因为在 select clause
-    // - order by 后的 expr 放在 create order by stmt 中进行 check field
+    // - order by 后的 expr 进行 check field
     if(select_sql.orderbys.size() > 0)
     {
         // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
-        // std::vector<std::unique_ptr<AggrFuncExpr>> aggr_exprs;
-        // std::vector<std::unique_ptr<FieldExpr>> field_exprs_not_in_aggr;
         std::vector<std::unique_ptr<Expression>> expr_for_orderby;
         // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
         auto collect_aggr_exprs = [&expr_for_orderby](Expression * expr) {
@@ -458,6 +518,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
   select_stmt->filter_stmt_ = filter_stmt; // maybe nullptr
   select_stmt->groupby_stmt_ = groupby_stmt; // maybe nullptr
   select_stmt->orderby_stmt_ = orderby_stmt; // mayve nullptr
+  select_stmt->having_stmt_ = having_filter_stmt; // mayve nullptr
   stmt = select_stmt;
   return RC::SUCCESS;
 }

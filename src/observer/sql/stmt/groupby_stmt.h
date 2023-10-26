@@ -29,7 +29,7 @@ public:
   {
     return field_exprs_;
   }
-  std::vector<std::unique_ptr<FieldExpr>>& get_groupby_fields()
+  std::vector<std::unique_ptr<Expression>>& get_groupby_fields()
   {
     return groupby_fields_;
   }
@@ -41,17 +41,19 @@ public:
   {
     field_exprs_ = std::move(field_exprs);
   }
-  void set_groupby_fields(std::vector<std::unique_ptr<FieldExpr>>&& groupby_fields) {
+  void set_groupby_fields(std::vector<std::unique_ptr<Expression>>&& groupby_fields) {
     groupby_fields_ = std::move(groupby_fields);
   }
 public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-      const GroupBySqlNode *groupby_node, GroupByStmt *&stmt,
+      const std::vector<Expression*>& groupby_expr, GroupByStmt *&stmt,
       std::vector<std::unique_ptr<AggrFuncExpr>>&& agg_exprs,
       std::vector<std::unique_ptr<FieldExpr>>&& field_exprs);
 
 private:
-  std::vector<std::unique_ptr<FieldExpr>> groupby_fields_; // group by clause
+  std::vector<std::unique_ptr<Expression>> groupby_fields_; // group by clause
   std::vector<std::unique_ptr<AggrFuncExpr>> agg_exprs_; // 聚集函数表达式
-  std::vector<std::unique_ptr<FieldExpr>> field_exprs_; // 非聚集函数中的字段表达式
+  std::vector<std::unique_ptr<FieldExpr>> field_exprs_; // 非聚集函数中的字段表达式,需要传递给下层的 order by 算子
+
+  // select min(c1) ,c2+c3 from t1 group by c2+c3,c3+c4;
 };

@@ -144,6 +144,7 @@ AggrFuncType get_aggr_func_type(char *func_name)
         GROUP
         BY
         ASC
+        HAVING
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -213,6 +214,8 @@ AggrFuncType get_aggr_func_type(char *func_name)
 %type <orderby_unit>        sort_unit
 %type <orderby_unit_list>   sort_list
 %type <orderby_unit_list>   opt_order_by
+%type <expression_list>     opt_group_by
+%type <condition_list>      opt_having
 %type <expression_list>     expression_list
 %type <update_kv_list>      update_kv_list
 %type <update_kv>           update_kv
@@ -786,7 +789,7 @@ select_stmt:        /*  select 语句的语法解析树*/
         delete $2;
       }
     }
-    | SELECT expression_list FROM from_node from_list where opt_order_by
+    | SELECT expression_list FROM from_node from_list where opt_group_by opt_having opt_order_by
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -805,8 +808,18 @@ select_stmt:        /*  select 语句的语法解析树*/
         delete $6;
       }
       if ($7 != nullptr) {
-        $$->selection.orderbys.swap(*$7);
+        $$->selection.groupby_exprs.swap(*$7);
         delete $7;
+        std::reverse($$->selection.groupby_exprs.begin(), $$->selection.groupby_exprs.end());
+      }
+      if ($8 != nullptr) {
+        $$->selection.having_conditions.swap(*$8);
+        delete $8;
+      }
+
+      if ($9 != nullptr) {
+        $$->selection.orderbys.swap(*$9);
+        delete $9;
       }
       delete $4;
     }
@@ -1074,6 +1087,25 @@ opt_order_by:
 	{
       $$ = $3;
       std::reverse($$->begin(),$$->end());
+	}
+	;
+opt_group_by:
+	/* empty */ {
+   $$ = nullptr;
+  }
+	| GROUP BY expression_list
+	{
+      $$ = $3;
+      std::reverse($$->begin(),$$->end());
+	}
+	;
+opt_having:
+  /* empty */ {
+   $$ = nullptr;
+  }
+	| HAVING condition_list
+	{
+      $$ = $2;
 	}
 	;
 comp_op:
