@@ -377,15 +377,15 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
         }
       };
       // 用于从 project exprs 中提取所有不是 aggr func expr 的 expr
-      // auto collect_exprs_not_aggexpr = [&exprs_not_aggr](Expression * expr) {
-      //   exprs_not_aggr.emplace_back(expr->deep_copy().release());
-      // };
+      auto collect_exprs_not_aggexpr = [&exprs_not_aggr](Expression * expr) {
+        exprs_not_aggr.emplace_back(expr->deep_copy().release());
+      };
     // do extract
     for (auto& project : projects) {
       project->traverse(collect_aggr_exprs);
       project->traverse(collect_field_exprs );
       //project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
-      //project->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+      project->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
     }
 
     // 2. 语义检查 check:
