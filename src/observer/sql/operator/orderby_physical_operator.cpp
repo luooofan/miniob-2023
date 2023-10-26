@@ -55,10 +55,10 @@ RC OrderByPhysicalOperator::fetch_and_sort_tables()
   int row_values_index = 0;
   int i = 0;
   while (RC::SUCCESS == (rc = children_[0]->next())) {
-    if(i++ % 2500 == 0)
-    {
-      LOG_WARN("niuxn:is sorting, %d",i);
-    }
+    // if(i++ % 2500 == 0)
+    // {
+    //   LOG_WARN("niuxn:is sorting, %d",i);
+    // }
     row_values_index = 0;//每一行都从 0 开始填
     // construct pair sort table
     // 1 cons vector<cell>
