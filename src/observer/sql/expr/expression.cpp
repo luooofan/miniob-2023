@@ -235,17 +235,23 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
     return rc;
   }
   if (comp_ == IN_OP || comp_ == NOT_IN_OP) {
+    if (left_value.is_null()) {
+      value.set_boolean(false);
+      return RC::SUCCESS;
+    }
     if (right_->type() == ExprType::EXPRLIST) {
       static_cast<ExprListExpr*>(right_.get())->reset();
     }
-    bool res = false;
+    bool res = false; // 有一样的值
+    bool has_null = false; // 有一个 null
     while (RC::SUCCESS == (rc = right_->get_value(tuple, right_value))) {
-      if (left_value.compare(right_value) == 0) {
+      if (right_value.is_null()) {
+        has_null = true;
+      } else if (left_value.compare(right_value) == 0) {
         res = true;
-        break;
       }
     }
-    value.set_boolean(comp_ == IN_OP ? res : !res);
+    value.set_boolean(comp_ == IN_OP ? res : (has_null ? false : !res));
     return rc == RC::RECORD_EOF ? RC::SUCCESS : rc;
   }
 
