@@ -162,6 +162,7 @@ public:
     ASSERT(nullptr != table, "RowTuple set_schema with a null table");
     table_ = table;
     const std::vector<FieldMeta> *fields = table_->table_meta().field_metas();
+    this->speces_.clear();//有的算子会 反复open close 
     this->speces_.reserve(fields->size());
     for (const FieldMeta &field : *fields) {
       speces_.push_back(new FieldExpr(table, &field));
@@ -297,7 +298,7 @@ public:
 
   RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const override
   {
-    return tuple_->find_cell(spec, cell,index);//TODO
+    return tuple_->find_cell(spec, cell,index);//TODO 应该不会走到这里
   }
 
   const std::vector<std::unique_ptr<Expression>>& expressions() const
@@ -447,8 +448,14 @@ public:
     if (rc == RC::SUCCESS || rc != RC::NOTFOUND) {
       return rc;
     }
-
-    return right_->find_cell(spec, value,index);
+ 
+    rc = right_->find_cell(spec, value,index);
+    if( rc != RC::SUCCESS)
+    {
+      return rc;
+    }
+    index += left_->cell_num();
+    return rc;
   }
 private:
   Tuple *left_ = nullptr;
@@ -476,10 +483,20 @@ public:
     if (tuple_ == nullptr) {
       return RC::INTERNAL;
     }
-    return tuple_->cell_at(index, cell);
+    //field_results_ 数组的下标从0开始，aggr_results_ 的下标从 field_results_.size() 开始
+    if (index < 0 || index >= aggr_results_.size() + field_results_.size()) {
+      return RC::NOTFOUND;
+    }
+
+    if(index < field_results_.size()){
+      cell = field_results_[index].result();
+    }else {
+      cell = aggr_results_[index - field_results_.size()].result();
+    }
+    return RC::SUCCESS;
   }
 
-  size_t find_index_by_name(std::string expr_name) const
+  size_t find_agg_index_by_name(std::string expr_name) const
   {
     for(size_t i = 0; i < aggr_results_.size(); ++i) {
       if(expr_name == aggr_results_[i].name()) {
@@ -488,15 +505,17 @@ public:
     }
     return -1;
   }
-  RC find_cell(std::string expr_name,Value &cell,int &index) const
-  {
-    index = find_index_by_name(expr_name);
-    if (index < 0 || index > aggr_results_.size()) {
-      return RC::NOTFOUND;
-    }
-    cell = aggr_results_[index].result();
-    return RC::SUCCESS;
-  }
+  // RC find_cell(std::string expr_name,Value &cell,int &index) const
+  // {
+  //   index = find_agg_index_by_name(expr_name);
+  //   if (index < 0 || index >= aggr_results_.size()) {
+  //     return RC::NOTFOUND;
+  //   }
+  //   cell = aggr_results_[index].result();
+  //   ////因为 GroupTuple 有两个存放结果的 vector ，所以给 aggr_results_ 返回的 index 加上一个偏移量
+  //   index += field_results_.size();
+  //   return RC::SUCCESS;
+  // }
   RC find_cell(const TupleCellSpec &spec, Value &cell,int& index) const override
   {
     // 先从字段表达式里面找
@@ -511,7 +530,15 @@ public:
       }
     }
     // 找不到再根据别名从聚集函数表达式里面找
-    return find_cell(std::string(spec.alias()), cell,index);
+    //return find_cell(std::string(spec.alias()), cell,index);
+    index = find_agg_index_by_name(std::string(spec.alias()));
+    if (index < 0 || index >= aggr_results_.size()) {
+      return RC::NOTFOUND;
+    }
+    cell = aggr_results_[index].result();
+    ////因为 GroupTuple 有两个存放结果的 vector ，所以给 aggr_results_ 返回的 index 加上一个偏移量
+    index += field_results_.size();
+    return RC::SUCCESS;
   }
 
   void init(std::vector<std::unique_ptr<AggrFuncExpr>> &&aggr_exprs,

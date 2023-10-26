@@ -628,6 +628,9 @@ private:
   AggrFuncType type_;
   std::unique_ptr<Expression> param_;
   bool param_is_constexpr_ = false;
+
+  bool is_first_ = true;
+  int index_ = -1;
 };
 
 class SysFuncExpr : public Expression {
