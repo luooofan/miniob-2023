@@ -20,6 +20,7 @@ See the Mulan PSL v2 for more details. */
 
 class Stmt;
 class CalcStmt;
+class CreateTableStmt;
 class SelectStmt;
 class FilterUnit;
 class FilterStmt;
@@ -40,6 +41,7 @@ public:
 
 private:
   RC create_plan(CalcStmt *calc_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
+  RC create_plan(CreateTableStmt *create_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   RC create_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   RC create_plan(FilterStmt *filter_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   // RC create_plan(FilterUnit *filter_unit, std::unique_ptr<LogicalOperator> &logical_operator);

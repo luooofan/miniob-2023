@@ -43,6 +43,26 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   return expr;
 }
 
+int get_aggr_func_type(char *func_name)
+{
+  int len = strlen(func_name);
+  for (int i = 0; i < len; i++) {
+    func_name[i] = tolower(func_name[i]);
+  }
+  if (0 == strcmp(func_name, "max")) {
+    return AggrFuncType::AGG_MAX;
+  } else if (0 == strcmp(func_name, "min")) {
+    return AggrFuncType::AGG_MIN;
+  } else if (0 == strcmp(func_name, "sum")) {
+    return AggrFuncType::AGG_SUM;
+  } else if (0 == strcmp(func_name, "avg")) {
+    return AggrFuncType::AGG_AVG;
+  } else if (0 == strcmp(func_name, "count")) {
+    return AggrFuncType::AGG_COUNT;
+  } 
+  return -1;
+}
+
 %}
 
 %define api.pure full
@@ -163,6 +183,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <number>              number
 %type <boolean>             null_option
 %type <boolean>             unique_option
+%type <boolean>             as_option
 %type <comp>                comp_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
@@ -177,7 +198,6 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <expression_list>     select_attr
 %type <expression>          expression
 %type <expression>          aggr_func_expr
-%type <number>              aggr_func_type
 %type <expression>          func_expr
 %type <number>              sys_func_type
 %type <expression_list>     expression_list
@@ -384,6 +404,30 @@ create_table_stmt:    /*create table 语句的语法解析树*/
       std::reverse(create_table.attr_infos.begin(), create_table.attr_infos.end());
       delete $5;
     }
+    | CREATE TABLE ID LBRACE attr_def attr_def_list RBRACE as_option select_stmt
+    {
+      $$ = $9;
+      $$->flag = SCF_CREATE_TABLE;
+      CreateTableSqlNode &create_table = $$->create_table;
+      create_table.relation_name = $3;
+      free($3);
+
+      std::vector<AttrInfoSqlNode> *src_attrs = $6;
+      if (src_attrs != nullptr) {
+        create_table.attr_infos.swap(*src_attrs);
+      }
+      create_table.attr_infos.emplace_back(*$5);
+      std::reverse(create_table.attr_infos.begin(), create_table.attr_infos.end());
+      delete $5;
+    }
+    | CREATE TABLE ID as_option select_stmt
+    {
+      $$ = $5;
+      $$->flag = SCF_CREATE_TABLE;
+      CreateTableSqlNode &create_table = $$->create_table;
+      create_table.relation_name = $3;
+      free($3);
+    }
     ;
 attr_def_list:
     /* empty */
@@ -401,7 +445,7 @@ attr_def_list:
       delete $2;
     }
     ;
-    
+
 attr_def:
     ID type LBRACE number RBRACE null_option
     {
@@ -436,6 +480,17 @@ null_option:
       $$ = false;
     }
     ;
+  as_option:
+    /* empty */
+    {
+      $$ = false;
+    }
+    | AS
+    {
+      $$ = false;
+    }
+    ;
+    
 number:
     NUMBER {$$ = $1;}
     ;
@@ -808,39 +863,23 @@ expression:
       $$ = $1;
     }
     ;
-aggr_func_type:
-    AGGR_MAX {
-      $$ = AggrFuncType::AGG_MAX;
-    }
-    | AGGR_MIN {
-      $$ = AggrFuncType::AGG_MIN;
-    }
-    | AGGR_SUM {
-      $$ = AggrFuncType::AGG_SUM;
-    }
-    | AGGR_AVG {
-      $$ = AggrFuncType::AGG_AVG;
-    }
-    | AGGR_COUNT {
-      $$ = AggrFuncType::AGG_COUNT;
-    }
-    ;
 aggr_func_expr:
-    aggr_func_type LBRACE expression RBRACE
+    ID LBRACE expression RBRACE
     {
-      AggrFuncType funtype = (AggrFuncType)$1;
+      
+      AggrFuncType funtype = (AggrFuncType)get_aggr_func_type($1);
       AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, $3);
       $$ = afexpr;
       $$->set_name(token_name(sql_string, &@$));
     }
-    | aggr_func_type LBRACE '*' RBRACE
+    | ID LBRACE '*' RBRACE
     {
-      if($1 != AggrFuncType::AGG_COUNT) {
+      if(get_aggr_func_type($1) != AggrFuncType::AGG_COUNT) {
         yyerror(&@$, sql_string, sql_result, scanner, "only support count(*)");
         YYERROR;
       }
       // regard count(*) as count(1)
-      AggrFuncType funtype = (AggrFuncType)$1;
+      AggrFuncType funtype = (AggrFuncType)get_aggr_func_type($1);
       AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, new ValueExpr(Value(1)));
       // afexpr->set_param_constexpr(true);
       $$ = afexpr;
