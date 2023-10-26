@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
+#include <unordered_set>
 
 SelectStmt::~SelectStmt()
 {
@@ -67,6 +68,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
   // 针对表的别名 不能重复
   std::vector<Table *> tables; // 收集所有 table 主要用于解析 select *
   std::unordered_map<std::string, std::string> table_alias_map; // <table src name, table alias name>
+  std::unordered_set<std::string> table_alias_set; // 用于检测当前层级别名是否重复
   std::unordered_map<std::string, Table *> table_map = parent_table_map; // 收集所有 table 包括所有祖先查询的 table
   std::unordered_map<std::string, Table *> local_table_map; // 每次收集第二级的 table
   std::vector<JoinTables> join_tables;
@@ -91,9 +93,11 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     local_table_map.insert(std::pair<std::string, Table *>(src_name, table));
     if (!alias.empty()) {
       // 需要考虑别名重复的问题
-      if (table_map.count(alias) != 0) {
+      // NOTE: 这里不能用 table_map 因为其中有 parent table
+      if (table_alias_set.count(alias) != 0) {
         return RC::INVALID_ARGUMENT;
       }
+      table_alias_set.insert(alias);
       table_alias_map.insert(std::pair<std::string, std::string>(src_name, alias));
       table_map.insert(std::pair<std::string, Table *>(alias, table));
       local_table_map.insert(std::pair<std::string, Table *>(alias, table));
@@ -278,6 +282,9 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       const char *field_name = field_expr->get_field_name().c_str();
       ASSERT(!common::is_blank(field_name), "Parse ERROR!");
       if ((0 == strcmp(table_name, "*")) && (0 == strcmp(field_name, "*"))) { // * or *.*
+        if (tables.empty() || !field_expr->alias().empty()) {
+          return RC::INVALID_ARGUMENT; // not allow: select *; select * as xxx;
+        }
         for (const Table *table : tables) {
           if (table_alias_map.count(table->name())) {
             wildcard_fields(table, table_alias_map[table->name()], projects, is_single_table);
