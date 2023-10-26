@@ -199,7 +199,6 @@ int get_aggr_func_type(char *func_name)
 %type <insert_value_list>   insert_value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
-%type <expression_list>     select_attr
 %type <expression>          expression
 %type <expression>          sub_query_expr
 %type <expression>          aggr_func_expr
@@ -776,7 +775,7 @@ sub_query_expr:
     ;
 
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT select_attr
+    SELECT expression_list
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -784,7 +783,7 @@ select_stmt:        /*  select 语句的语法解析树*/
         delete $2;
       }
     }
-    | SELECT select_attr FROM from_node from_list where
+    | SELECT expression_list FROM from_node from_list where
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -888,23 +887,20 @@ expression:
 aggr_func_expr:
     ID LBRACE expression RBRACE
     {
-      
-      AggrFuncType funtype = (AggrFuncType)get_aggr_func_type($1);
-      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, $3);
-      $$ = afexpr;
-      $$->set_name(token_name(sql_string, &@$));
-    }
-    | ID LBRACE '*' RBRACE
-    {
-      if(get_aggr_func_type($1) != AggrFuncType::AGG_COUNT) {
-        yyerror(&@$, sql_string, sql_result, scanner, "only support count(*)");
-        YYERROR;
+      Expression* rhs = $3;
+      if ($3->type() == ExprType::FIELD) {
+        FieldExpr* field_expr = static_cast<FieldExpr*>($3);
+        if (field_expr->get_field_name() == "*") {
+          if(get_aggr_func_type($1) != AggrFuncType::AGG_COUNT) {
+            delete $3;
+            yyerror(&@$, sql_string, sql_result, scanner, "only support count(*)");
+            YYERROR;
+          }
+          rhs = new ValueExpr(Value(1));
+          delete $3;
+        }
       }
-      // regard count(*) as count(1)
-      AggrFuncType funtype = (AggrFuncType)get_aggr_func_type($1);
-      AggrFuncExpr *afexpr = new AggrFuncExpr(funtype, new ValueExpr(Value(1)));
-      // afexpr->set_param_constexpr(true);
-      $$ = afexpr;
+      $$ = new AggrFuncExpr(get_aggr_func_type($1), rhs);
       $$->set_name(token_name(sql_string, &@$));
     }
     ;
@@ -930,22 +926,6 @@ func_expr:
     }
     ;
 
-select_attr:
-    '*' {
-      $$ = new std::vector<Expression *>;
-      FieldExpr *expr = new FieldExpr("*", "*");
-      $$->emplace_back(expr);
-    }
-    | '*' DOT '*' {
-      $$ = new std::vector<Expression *>;
-      FieldExpr *expr = new FieldExpr("*", "*");
-      $$->emplace_back(expr);
-    }
-    | expression_list {
-      $$ = $1;
-    }
-    ;
-
 rel_attr:
     ID {
       $$ = new RelAttrSqlNode;
@@ -959,11 +939,21 @@ rel_attr:
       free($1);
       free($3);
     }
+    | '*' DOT '*' {
+      $$ = new RelAttrSqlNode;
+      $$->relation_name  = "*";
+      $$->attribute_name = "*";
+    }
     | ID DOT '*' {
       $$ = new RelAttrSqlNode;
       $$->relation_name  = $1;
       $$->attribute_name = "*";
       free($1);
+    }
+    | '*' {
+      $$ = new RelAttrSqlNode;
+      $$->relation_name  = "*";
+      $$->attribute_name = "*";
     }
     ;
 

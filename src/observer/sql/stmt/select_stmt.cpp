@@ -282,6 +282,9 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       const char *field_name = field_expr->get_field_name().c_str();
       ASSERT(!common::is_blank(field_name), "Parse ERROR!");
       if ((0 == strcmp(table_name, "*")) && (0 == strcmp(field_name, "*"))) { // * or *.*
+        if (tables.empty() || !field_expr->alias().empty()) {
+          return RC::INVALID_ARGUMENT; // not allow: select *; select * as xxx;
+        }
         for (const Table *table : tables) {
           if (table_alias_map.count(table->name())) {
             wildcard_fields(table, table_alias_map[table->name()], projects, is_single_table);
