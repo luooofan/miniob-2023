@@ -188,6 +188,7 @@ int get_aggr_func_type(char *func_name)
 %type <boolean>             unique_option
 %type <boolean>             as_option
 %type <comp>                comp_op
+%type <comp>                exists_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
@@ -1018,6 +1019,17 @@ condition:
       value_expr->set_value(val);
       $$->right_expr = value_expr;
     }
+    | exists_op expression
+    {
+      $$ = new ConditionSqlNode;
+      ValueExpr *value_expr = new ValueExpr();
+      Value val;
+      val.set_null();
+      value_expr->set_value(val);
+      $$->left_expr = value_expr;
+      $$->right_expr = $2;
+      $$->comp = $1;
+    }
     ;
 
 comp_op:
@@ -1031,7 +1043,10 @@ comp_op:
     | NOT LIKE {$$ = NOT_LIKE_OP;}
     | IN { $$ = IN_OP; }
     | NOT IN { $$ = NOT_IN_OP; }
-    | EXISTS { $$ = EXISTS_OP; }
+    ;
+
+exists_op:
+    EXISTS { $$ = EXISTS_OP; }
     | NOT EXISTS { $$ = NOT_EXISTS_OP; }
     ;
 

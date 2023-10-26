@@ -220,7 +220,14 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
   left_subquery_expr = if_subquery_open(left_);
   right_subquery_expr = if_subquery_open(right_);
 
-  RC rc = left_->get_value(tuple, left_value);
+  RC rc = RC::SUCCESS;
+  if (comp_ == EXISTS_OP || comp_ == NOT_EXISTS_OP) {
+    rc = right_->get_value(tuple, right_value);
+    value.set_boolean(comp_ == EXISTS_OP ? rc == RC::SUCCESS : rc == RC::RECORD_EOF);
+    return RC::RECORD_EOF == rc ? RC::SUCCESS : rc;
+  }
+
+  rc = left_->get_value(tuple, left_value);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
     return rc;
@@ -229,11 +236,6 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
     return RC::INVALID_ARGUMENT;
   }
 
-  if (comp_ == EXISTS_OP || comp_ == NOT_EXISTS_OP) {
-    rc = right_->get_value(tuple, right_value);
-    value.set_boolean(comp_ == EXISTS_OP ? rc == RC::SUCCESS : rc == RC::RECORD_EOF);
-    return rc;
-  }
   if (comp_ == IN_OP || comp_ == NOT_IN_OP) {
     if (left_value.is_null()) {
       value.set_boolean(false);
