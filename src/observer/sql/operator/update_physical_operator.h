@@ -29,8 +29,8 @@ class UpdateStmt;
 class UpdatePhysicalOperator : public PhysicalOperator
 {
 public:
-  UpdatePhysicalOperator(Table *table, std::vector<Value*> &values, std::vector<FieldMeta> &fields) 
-    : table_(table), values_(values)
+  UpdatePhysicalOperator(Table *table, std::vector<std::unique_ptr<Expression>> &&values, std::vector<FieldMeta> &fields) 
+    : table_(table), values_(std::move(values))
   {
     for (FieldMeta &field : fields) {
       fields_.emplace_back(field.name());
@@ -71,7 +71,8 @@ public:
 private:
   Table *table_ = nullptr;
   Trx *trx_ = nullptr;
-  std::vector<Value*> values_;
+  std::vector<std::unique_ptr<Expression>> values_;
+  std::vector<Value> raw_values_;
   std::vector<std::string> fields_;
 
   std::vector<int> fields_id_;
@@ -81,4 +82,5 @@ private:
   // 存储已经更新过的行数据，用于回滚
   std::vector<RID> old_rids_;
   std::vector<std::vector<Value>> old_values_;
+  bool invalid_ = false;
 };
