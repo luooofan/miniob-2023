@@ -941,12 +941,6 @@ select_attr:
       FieldExpr *expr = new FieldExpr("*", "*");
       $$->emplace_back(expr);
     }
-    | ID DOT '*' {
-      $$ = new std::vector<Expression *>;
-      FieldExpr *expr = new FieldExpr($1, "*");
-      $$->emplace_back(expr);
-      free($1);
-    }
     | expression_list {
       $$ = $1;
     }
@@ -964,6 +958,12 @@ rel_attr:
       $$->attribute_name = $3;
       free($1);
       free($3);
+    }
+    | ID DOT '*' {
+      $$ = new RelAttrSqlNode;
+      $$->relation_name  = $1;
+      $$->attribute_name = "*";
+      free($1);
     }
     ;
 
