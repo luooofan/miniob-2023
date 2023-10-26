@@ -111,7 +111,7 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   return expr;
 }
 
-int get_aggr_func_type(char *func_name)
+AggrFuncType get_aggr_func_type(char *func_name)
 {
   int len = strlen(func_name);
   for (int i = 0; i < len; i++) {
@@ -128,7 +128,7 @@ int get_aggr_func_type(char *func_name)
   } else if (0 == strcmp(func_name, "count")) {
     return AggrFuncType::AGG_COUNT;
   } 
-  return -1;
+  return AggrFuncType::AGGR_FUNC_TYPE_NUM;
 }
 
 
