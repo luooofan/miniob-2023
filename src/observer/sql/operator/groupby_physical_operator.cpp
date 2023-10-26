@@ -18,12 +18,11 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/filter_stmt.h"
 #include "storage/field/field.h"
 
-GroupByPhysicalOperator::GroupByPhysicalOperator(std::vector<std::unique_ptr<FieldExpr>>&& groupby_fields,
+GroupByPhysicalOperator::GroupByPhysicalOperator(std::vector<std::unique_ptr<Expression>>&& groupby_fields,
   std::vector<std::unique_ptr<AggrFuncExpr>> &&agg_exprs,
   std::vector<std::unique_ptr<FieldExpr>> &&field_exprs)
     : groupby_fields_(std::move(groupby_fields))
 {
-  groupby_fields_.swap(groupby_fields);
   tuple_.init(std::move(agg_exprs), std::move(field_exprs));
 }
 
@@ -65,9 +64,9 @@ RC GroupByPhysicalOperator::next()
     is_first_ = false;
     is_new_group_ = true;
     // set initial value of pre_values_
-    for(const std::unique_ptr<FieldExpr>& field : groupby_fields_) {
+    for(const std::unique_ptr<Expression>& expr : groupby_fields_) {
       Value val;
-      field->get_value(*children_[0]->current_tuple(),val);
+      expr->get_value(*children_[0]->current_tuple(),val);
       pre_values_.emplace_back(val);
     }
     LOG_INFO("GroupByOperator set first success!");
@@ -84,7 +83,7 @@ RC GroupByPhysicalOperator::next()
     }
     // 1. adjust whether current tuple is new group or not
     for (size_t i = 0; i < groupby_fields_.size(); ++i) {
-      const std::unique_ptr<FieldExpr>& field = groupby_fields_[i];
+      const std::unique_ptr<Expression>& field = groupby_fields_[i];
       Value value;
       field->get_value(*children_[0]->current_tuple(), value);
       if(value.compare(pre_values_[i]) != 0) {

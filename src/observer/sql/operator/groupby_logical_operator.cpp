@@ -13,7 +13,7 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/operator/groupby_logical_operator.h"
-GroupByLogicalOperator::GroupByLogicalOperator(std::vector<std::unique_ptr<FieldExpr>> &&groupby_fields,
+GroupByLogicalOperator::GroupByLogicalOperator(std::vector<std::unique_ptr<Expression>> &&groupby_fields,
     std::vector<std::unique_ptr<AggrFuncExpr>> &&agg_exprs,
     std::vector<std::unique_ptr<FieldExpr>> &&field_exprs)
     : groupby_fields_(std::move(groupby_fields)),

@@ -178,11 +178,11 @@ RC Table::open(const char *meta_file, const char *base_dir)
   }
 
   // 加载text数据
-  rc = init_text_handler(base_dir);
-  if (rc != RC::SUCCESS) {
-    LOG_ERROR("Failed to open table %s due to init text handler failed.", base_dir);
-    return rc;
-  }
+  // rc = init_text_handler(base_dir);
+  // if (rc != RC::SUCCESS) {
+  //   LOG_ERROR("Failed to open table %s due to init text handler failed.", base_dir);
+  //   return rc;
+  // }
 
   base_dir_ = base_dir;
 

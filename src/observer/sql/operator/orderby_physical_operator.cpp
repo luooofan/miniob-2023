@@ -53,7 +53,7 @@ RC OrderByPhysicalOperator::fetch_and_sort_tables()
 
   std::vector<Value> row_values(tuple_.exprs().size());//缓存每一行
   int row_values_index = 0;
-  int i = 0;
+  //int i = 0;
   while (RC::SUCCESS == (rc = children_[0]->next())) {
     // if(i++ % 2500 == 0)
     // {

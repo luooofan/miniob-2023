@@ -170,19 +170,67 @@ RC LogicalPlanGenerator::create_plan(
     }
   }
   if (select_stmt->groupby_stmt()) {
+    // 为 groupby_oper 加一个sort 子算子
+    // 1.先构造 orderby_unit
+    auto & group_fields = select_stmt->groupby_stmt()->get_groupby_fields();
+    std::vector<unique_ptr<OrderByUnit>> order_units;
+    for(auto &expr: group_fields)
+    {
+      order_units.emplace_back(std::make_unique<OrderByUnit>(expr->deep_copy().release(),true));//这里指针需要深拷贝一份给 order by
+    }
+
+  //  2 .需要将 groupy_oper 中的 field_expr ,和 groupby  后的expr  复制一份传递给 orderby 算子
+    std::vector<std::unique_ptr<Expression>> field_exprs;
+    auto & field = select_stmt->groupby_stmt()->get_field_exprs();
+    for(auto &expr : field)
+    {
+      field_exprs.emplace_back(expr->deep_copy().release());
+    }
+    auto & tmp = select_stmt->groupby_stmt()->get_groupby_fields();
+    for(auto & expr :tmp )
+    {
+      field_exprs.emplace_back(expr->deep_copy().release());
+    }
+
+
     unique_ptr<LogicalOperator> groupby_oper;
     rc = create_plan(select_stmt->groupby_stmt(), groupby_oper);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to create groupby logical plan. rc=%s", strrc(rc));
       return rc;
     }
-    if(groupby_oper){
+    unique_ptr<LogicalOperator> orderby_oper(new OrderByLogicalOperator(std::move(order_units),std::move(field_exprs)));
+    if(top_oper){
+      orderby_oper->add_child(std::move(top_oper));
+    }
+    top_oper = std::move(orderby_oper);
+    
+    groupby_oper->add_child(std::move(top_oper));
+    top_oper = std::move(groupby_oper);
+
+    // if(groupby_oper){
+    //   if (top_oper) {
+    //     groupby_oper->add_child(std::move(top_oper));
+    //   }
+    //   top_oper = std::move(groupby_oper);
+    // }
+  }
+
+  if (select_stmt->having_stmt()) {
+    unique_ptr<LogicalOperator> predicate_oper;
+    rc = create_plan(select_stmt->having_stmt(), predicate_oper);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create having predicate logical plan. rc=%s", strrc(rc));
+      return rc;
+    }
+    if (predicate_oper) {
       if (top_oper) {
-        groupby_oper->add_child(std::move(top_oper));
+        predicate_oper->add_child(std::move(top_oper));
       }
-      top_oper = std::move(groupby_oper);
+      top_oper = std::move(predicate_oper);
     }
   }
+
   if (select_stmt->orderby_stmt()) {
     unique_ptr<LogicalOperator> orderby_oper;
     rc = create_plan(select_stmt->orderby_stmt(), orderby_oper);
