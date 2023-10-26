@@ -342,7 +342,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 
       //select 子句中出现的所有fieldexpr 都需要传递收集起来,
       std::vector<std::unique_ptr<FieldExpr>> field_exprs;//这个 vector 需要传递给 order by 算子
-      std::vector<std::unique_ptr<Expression>> exprs_not_aggr; //select 后的所有非 aggrexpr,用来判断语句是否合法 
+      std::vector<std::unique_ptr<Expression>> field_exprs_not_aggr; //select 后的所有非 aggrexpr 的 field_expr,用来判断语句是否合法 
       // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
       auto collect_aggr_exprs = [&aggr_exprs](Expression * expr) {
         if (expr->type() == ExprType::AGGRFUNCTION) {
@@ -355,15 +355,19 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
           field_exprs.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
         }
       };
-      // 用于从 project exprs 中提取所有不是 aggr func expr 的 expr
-      auto collect_exprs_not_aggexpr = [&exprs_not_aggr](Expression * expr) {
-        exprs_not_aggr.emplace_back(expr->deep_copy().release());
+      // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
+      auto collect_exprs_not_aggexpr = [&field_exprs_not_aggr](Expression * expr) {
+          if (expr->type() == ExprType::FIELD) {
+          field_exprs_not_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
+        }
       };
     // do extract
     for (auto& project : projects) {
-      project->traverse(collect_aggr_exprs);
-      project->traverse(collect_field_exprs );
+      project->traverse(collect_aggr_exprs);//提取所有 aggexpr
+      project->traverse(collect_field_exprs );//提取 select clause 中的所有 field_expr,传递给groupby stmt
       //project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+
+      //提取所有不在 aggexpr 中的 field_expr，用于语义检查
       project->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
     }
 
@@ -373,7 +377,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     // - 非聚集函数中的字段应该 必须在 group by 的字段中
     // - 没有 group by clause 时，不应该有非聚集函数中的字段
     // 当前没有 group by，所以只 check 一下有没有不在聚集函数中的字段即可
-    if (!exprs_not_aggr.empty() && select_sql.groupby_exprs.size() == 0) {
+    if (!field_exprs_not_aggr.empty() && select_sql.groupby_exprs.size() == 0) {
       LOG_WARN("No Group By. But Has Fields Not In Aggr Func");
       return RC::INVALID_ARGUMENT;
     }
