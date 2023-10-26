@@ -38,6 +38,7 @@ RC GroupByPhysicalOperator::open(Trx *trx)
     rc = RC::INTERNAL;
     LOG_WARN("GroupByOperater child open failed!");
   }
+  tuple_.reset();
   tuple_.set_tuple(children_[0] -> current_tuple());
   is_record_eof_ = false;
   is_first_ = true;

@@ -181,7 +181,7 @@ RC LogicalPlanGenerator::create_plan(
   }
 
   // set top oper
-  ASSERT(outside_prev_oper, "ERROR!");
+  ASSERT(outside_prev_oper, "ERROR!"); // TODO(wbj) Why doesn't work?
   unique_ptr<LogicalOperator> top_oper = std::move(outside_prev_oper); // maybe null
 
   if (select_stmt->filter_stmt()) {
@@ -239,7 +239,23 @@ RC LogicalPlanGenerator::create_plan(
 {
   std::vector<unique_ptr<Expression>> cmp_exprs;
   const std::vector<FilterUnit *> &filter_units = filter_stmt->filter_units();
+  auto process_sub_query = [this](std::unique_ptr<Expression>& expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr.get());
+      std::unique_ptr<LogicalOperator> sub_query_logi_oper;
+      if (RC rc = create_plan(sub_query_expr->get_select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
+        return rc;
+      }
+      sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
+    }
+    return RC::SUCCESS;
+  };
   for (FilterUnit *filter_unit : filter_units) {
+    if (RC rc = process_sub_query(filter_unit->left()); RC::SUCCESS != rc) {
+      return rc;
+    } else if (rc = process_sub_query(filter_unit->right()); RC::SUCCESS != rc) {
+      return rc;
+    }
     ComparisonExpr *cmp_expr = new ComparisonExpr(filter_unit->comp(),  std::move(filter_unit->left()), std::move(filter_unit->right()));
     cmp_exprs.emplace_back(cmp_expr);
   }

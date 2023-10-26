@@ -93,29 +93,31 @@ extern int yydebug;
     INNER = 299,
     JOIN = 300,
     AS = 301,
-    EQ = 302,
-    LT = 303,
-    GT = 304,
-    LE = 305,
-    GE = 306,
-    NE = 307,
-    NOT = 308,
-    LIKE = 309,
-    UNIQUE = 310,
-    AGGR_MAX = 311,
-    AGGR_MIN = 312,
-    AGGR_SUM = 313,
-    AGGR_AVG = 314,
-    AGGR_COUNT = 315,
-    LENGTH = 316,
-    ROUND = 317,
-    DATE_FORMAT = 318,
-    NUMBER = 319,
-    FLOAT = 320,
-    ID = 321,
-    SSS = 322,
-    DATE_STR = 323,
-    UMINUS = 324
+    IN = 302,
+    EXISTS = 303,
+    EQ = 304,
+    LT = 305,
+    GT = 306,
+    LE = 307,
+    GE = 308,
+    NE = 309,
+    NOT = 310,
+    LIKE = 311,
+    UNIQUE = 312,
+    AGGR_MAX = 313,
+    AGGR_MIN = 314,
+    AGGR_SUM = 315,
+    AGGR_AVG = 316,
+    AGGR_COUNT = 317,
+    LENGTH = 318,
+    ROUND = 319,
+    DATE_FORMAT = 320,
+    NUMBER = 321,
+    FLOAT = 322,
+    ID = 323,
+    SSS = 324,
+    DATE_STR = 325,
+    UMINUS = 326
   };
 #endif
 
@@ -123,7 +125,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 143 "yacc_sql.y"
+#line 145 "yacc_sql.y"
 
   ParsedSqlNode *                   sql_node;
   ConditionSqlNode *                condition;
@@ -148,7 +150,7 @@ union YYSTYPE
   float                             floats;
   bool                              boolean;
 
-#line 152 "yacc_sql.hpp"
+#line 154 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

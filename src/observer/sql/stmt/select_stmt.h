@@ -70,7 +70,8 @@ public:
 
 public:
   // select_sql.project exprs would be clear
-  static RC create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt);
+  static RC create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
+    std::unordered_map<std::string, Table *> parent_table_map = {});
 
 public:
   const std::vector<JoinTables> &join_tables() const

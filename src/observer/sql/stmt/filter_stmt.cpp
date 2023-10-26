@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/defer.h"
 #include "common/lang/string.h"
 #include "sql/stmt/filter_stmt.h"
+#include "sql/stmt/select_stmt.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
@@ -61,23 +62,35 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     return RC::INVALID_ARGUMENT;
   }
 
-  filter_unit = new FilterUnit; //filterUnit 左右应该都是表达式
-  DEFER([&](){
-    if (RC::SUCCESS != rc && nullptr != filter_unit) {
-      delete filter_unit;
-      filter_unit = nullptr;
-    }
-  });
-
-  const std::vector<Table *> table_arr; // 因为条件表达式里的 FieldExpr 一定是 t1.c1 所以传入个空的 table vector 就行
-  auto check_field = [&tables, &table_arr, &db, &default_table](Expression *expr) {
+  auto check_field = [&db, &tables, &default_table](Expression *expr) {
     if (expr->type() == ExprType::SYSFUNCTION) {
       SysFuncExpr* sysfunc_expr = static_cast<SysFuncExpr*>(expr);
       return sysfunc_expr->check_param_type_and_number();
-    } else if (expr->type() == ExprType::FIELD) {
-      FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
-      return field_expr->check_field(*tables, {}, table_arr, db, default_table);
     }
+    if (expr->type() == ExprType::FIELD) {
+      FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
+      // default_table 是有效的 所以 table* vector 可以为空
+      // 条件表达式检查时可以不用 table_alias_map 因为不需要设置它的 alias
+      return field_expr->check_field(*tables, {}, default_table, {});
+    }
+    if (expr->type() == ExprType::SUBQUERY) {
+      // 条件表达式里才有子查询
+      SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr);
+      Stmt * select_stmt = nullptr;
+      if (RC rc = SelectStmt::create(db, *subquery_expr->get_sql_node(), select_stmt, *tables); RC::SUCCESS != rc) {
+        return rc;
+      }
+      if (select_stmt->type() != StmtType::SELECT) {
+        return RC::INVALID_ARGUMENT;
+      }
+      SelectStmt* ss = static_cast<SelectStmt*>(select_stmt);
+      if (ss->projects().size() > 1) {
+        return RC::INVALID_ARGUMENT;
+      }
+      subquery_expr->set_select_stmt(static_cast<SelectStmt*>(select_stmt));
+      return RC::SUCCESS;
+    }
+    // TODO check comaparision expr 检查子查询的列数
     return RC::SUCCESS;
   };
   if (rc = condition.left_expr->traverse_check(check_field); rc != RC::SUCCESS) {
@@ -89,6 +102,8 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     return rc;
   }
 
+  // everything alright
+  filter_unit = new FilterUnit;
   filter_unit->set_left(std::unique_ptr<Expression>(condition.left_expr));
   // condition.left_expr = nullptr;
   filter_unit->set_right(std::unique_ptr<Expression>(condition.right_expr));

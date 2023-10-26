@@ -13,11 +13,15 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/expr/expression.h"
+#include "common/lang/defer.h"
 #include "sql/expr/tuple.h"
 #include <regex>
 #include <string>
 #include "common/lang/string.h"
 #include <iomanip>
+#include "sql/stmt/select_stmt.h"
+#include "sql/operator/logical_operator.h"
+#include "sql/operator/physical_operator.h"
 
 using namespace std;
 
@@ -188,19 +192,70 @@ RC ComparisonExpr::try_get_value(Value &cell) const
 
 RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
 {
-  //c1 + c2 > c2 + c3
   Value left_value;
   Value right_value;
 
-  RC rc = left_->get_value(tuple, left_value);//计算 c1+c2
+  SubQueryExpr* left_subquery_expr = nullptr;
+  SubQueryExpr* right_subquery_expr = nullptr;
+  // TODO(wbj) 为啥不能传两个参数
+  DEFER([&left_subquery_expr]() {
+    if (nullptr != left_subquery_expr) {
+      left_subquery_expr->close();
+    }
+  });
+  DEFER([&right_subquery_expr]() {
+    if (nullptr != right_subquery_expr) {
+      right_subquery_expr->close();
+    }
+  });
+
+  auto if_subquery_open = [](const std::unique_ptr<Expression>& expr) {
+    SubQueryExpr* sqexp = nullptr;
+    if (expr->type() == ExprType::SUBQUERY) {
+      sqexp = static_cast<SubQueryExpr*>(expr.get());
+      sqexp->open(nullptr); // 暂时先 nullptr
+    }
+    return sqexp;
+  };
+  left_subquery_expr = if_subquery_open(left_);
+  right_subquery_expr = if_subquery_open(right_);
+
+  RC rc = left_->get_value(tuple, left_value);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
     return rc;
   }
-  rc = right_->get_value(tuple, right_value);//计算 c2 + c3;
+  if (left_subquery_expr && left_subquery_expr->has_more_row(tuple)) {
+    return RC::INVALID_ARGUMENT;
+  }
+
+  if (comp_ == EXISTS_OP || comp_ == NOT_EXISTS_OP) {
+    rc = right_->get_value(tuple, right_value);
+    value.set_boolean(comp_ == EXISTS_OP ? rc == RC::SUCCESS : rc == RC::RECORD_EOF);
+    return rc;
+  }
+  if (comp_ == IN_OP || comp_ == NOT_IN_OP) {
+    if (right_->type() == ExprType::EXPRLIST) {
+      static_cast<ExprListExpr*>(right_.get())->reset();
+    }
+    bool res = false;
+    while (RC::SUCCESS == (rc = right_->get_value(tuple, right_value))) {
+      if (left_value.compare(right_value) == 0) {
+        res = true;
+        break;
+      }
+    }
+    value.set_boolean(comp_ == IN_OP ? res : !res);
+    return rc == RC::RECORD_EOF ? RC::SUCCESS : rc;
+  }
+
+  rc = right_->get_value(tuple, right_value);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
     return rc;
+  }
+  if (right_subquery_expr && right_subquery_expr->has_more_row(tuple)) {
+    return RC::INVALID_ARGUMENT;
   }
 
   bool bool_value = false;
@@ -389,11 +444,12 @@ RC ArithmeticExpr::try_get_value(Value &value) const
   return calc_value(left_value, right_value, value);
 }
 
-// 检查表达式中出现的 表,列 是否存在
-// NOTE: 是针对 projects 中的 FieldExpr 写的 conditions 中的也可以用 但是处理之后的 name alias 是无效的
+// table_map 有表名检查表名(可能是别名) 没表名只能有一个 table 或者用 default table 检查列名
+// table_alias_map 是为了设置 name alias 的时候用
+// NOTE: 是针对 projects 中的 FieldExpr 写的 conditions 中的也可以用 但是处理之后的 name alias 是无用的
 RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::unordered_map<std::string, std::string> & table_alias_map,
-    const std::vector<Table *> &tables, Db *db, Table* default_table)
+  const std::vector<Table *> &tables, Table* default_table,
+  const std::unordered_map<std::string, std::string> & table_alias_map)
 {
   ASSERT(field_name_ != "*", "ERROR!");
   const char* table_name = table_name_.c_str();
@@ -420,12 +476,12 @@ RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_
   // check field
   const FieldMeta *field_meta = table->table_meta().field(field_name);
   if (nullptr == field_meta) {
-    LOG_WARN("no such field. field=%s.%s.%s", db->name(), table->name(), field_name);
+    LOG_WARN("no such field. field=%s.%s", table->name(), field_name);
     return RC::SCHEMA_FIELD_MISSING;
   }
   // set field_
   field_ = Field(table, field_meta);
-  // set name 应该没用了 但是保留它
+  // set name 没用了 暂时保留它
   bool is_single_table = (tables.size() == 1);
   if(is_single_table) {
     set_name(field_name_);
@@ -720,4 +776,94 @@ RC SysFuncExpr::check_param_type_and_number() const
     break;
   }
   return rc;
+}
+
+SubQueryExpr::SubQueryExpr(const SelectSqlNode& sql_node) 
+{
+  sql_node_ = std::make_unique<SelectSqlNode>(sql_node);
+}
+  
+SubQueryExpr::~SubQueryExpr() = default;
+
+// 子算子树的 open 和 close 逻辑由外部控制
+RC SubQueryExpr::open(Trx* trx)
+{
+  return physical_oper_->open(trx);
+}
+
+RC SubQueryExpr::close()
+{
+  return physical_oper_->close();
+}
+
+bool SubQueryExpr::has_more_row(const Tuple &tuple) const
+{
+  // TODO(wbj) 这里没考虑其他错误
+  physical_oper_->set_parent_tuple(&tuple);
+  return physical_oper_->next() != RC::RECORD_EOF;
+}
+
+RC SubQueryExpr::get_value(const Tuple &tuple, Value &value) const 
+{ 
+  physical_oper_->set_parent_tuple(&tuple);
+  // 每次返回一行的第一个 cell
+  if (RC rc = physical_oper_->next(); RC::SUCCESS != rc) {
+    return rc;
+  }
+  return physical_oper_->current_tuple()->cell_at(0, value);
+}
+
+RC SubQueryExpr::try_get_value(Value &value) const
+{
+  return RC::UNIMPLENMENT;
+}
+
+ExprType SubQueryExpr::type() const
+{ 
+  return ExprType::SUBQUERY;
+}
+
+AttrType SubQueryExpr::value_type() const
+{ 
+  return UNDEFINED;
+}
+
+std::unique_ptr<Expression> SubQueryExpr::deep_copy() const 
+{ 
+  return {}; 
+}
+
+const std::unique_ptr<SelectSqlNode>& SubQueryExpr::get_sql_node() const
+{
+  return sql_node_;
+}
+
+void SubQueryExpr::set_select_stmt(SelectStmt* stmt)
+{
+  stmt_ = std::unique_ptr<SelectStmt>(stmt);
+}
+
+const std::unique_ptr<SelectStmt>& SubQueryExpr::get_select_stmt() const
+{
+  return stmt_;
+}
+
+void SubQueryExpr::set_logical_oper(std::unique_ptr<LogicalOperator>&& oper)
+{
+  logical_oper_ = std::move(oper);
+}
+
+const std::unique_ptr<LogicalOperator>& SubQueryExpr::get_logical_oper()
+{
+  return logical_oper_;
+}
+
+void SubQueryExpr::set_physical_oper(std::unique_ptr<PhysicalOperator>&& oper)
+{
+  physical_oper_ = std::move(oper);
+}
+
+const std::unique_ptr<PhysicalOperator>& SubQueryExpr::get_physical_oper()
+{
+  return physical_oper_;
 }

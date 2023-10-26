@@ -59,6 +59,12 @@ enum CompOp
   NOT_LIKE_OP,  ///< "not like"
   IS_NULL,      ///< is null
   IS_NOT_NULL,  ///< is not null
+  // -------
+  IN_OP,        ///< in (sub query)
+  NOT_IN_OP,    ///< not in (sub query)
+  EXISTS_OP,    ///< exists (sub query)
+  NOT_EXISTS_OP,///< not exists (sub query)
+  // ------- 上面这四个连着不要拆开
   NO_OP
 };
 
