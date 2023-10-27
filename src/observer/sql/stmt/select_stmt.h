@@ -109,6 +109,7 @@ private:
 private:
   std::vector<std::unique_ptr<Expression>> projects_;
   std::vector<JoinTables> join_tables_;
+  // TODO 下面这些应该改为 unique_ptr
   FilterStmt *filter_stmt_ = nullptr;
   GroupByStmt *groupby_stmt_ = nullptr;
   OrderByStmt *orderby_stmt_ = nullptr;

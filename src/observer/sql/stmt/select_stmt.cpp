@@ -259,11 +259,11 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       projects.emplace_back(expr);
     }
   }
-  select_sql.project_exprs.clear();
+  select_sql.project_exprs.clear(); // 管理权已经移交到 projects 中 后续会交给 select stmt
 
   LOG_INFO("got %d tables in from clause and %d exprs in query clause", tables.size(), projects.size());
 
-  FilterStmt *filter_stmt = nullptr;
+  FilterStmt *filter_stmt = nullptr; // TODO release memory when failed
   if (select_sql.conditions != nullptr) {
     rc = FilterStmt::create(db,
         default_table,
@@ -276,8 +276,8 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     }
   }
 
-  GroupByStmt *groupby_stmt = nullptr;
-  FilterStmt *having_filter_stmt = nullptr;
+  GroupByStmt *groupby_stmt = nullptr; // TODO release memory when failed
+  FilterStmt *having_filter_stmt = nullptr; // TODO release memory when failed
   // 有聚集函数表达式 或者有 group by clause 就要添加 group by stmt
   if (has_aggr_func_expr || select_sql.groupby_exprs.size() > 0) {
     // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
@@ -398,12 +398,11 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     // 4.在物理计划生成阶段向 groupby_operator 下挂一个 orderby_operator
   }
 
-  OrderByStmt *orderby_stmt = nullptr;
+  OrderByStmt *orderby_stmt = nullptr; // TODO release memory when failed
   // 4. create orderby stmt
   // - 先提取select clause 后的 field_expr(非agg_expr中的)，和agg_expr，这里提取时已经不需要再进行 check 了，因为在 select clause
   // - order by 后的 expr 进行 check field
-  if(select_sql.orderbys.size() > 0)
-  {
+  if(select_sql.orderbys.size() > 0) {
     // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
     std::vector<std::unique_ptr<Expression>> expr_for_orderby;
     // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
