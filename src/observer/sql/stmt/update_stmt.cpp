@@ -55,19 +55,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
     if (expr->type() == ExprType::SUBQUERY) {
       // 条件表达式里才有子查询
       SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr);
-      Stmt * select_stmt = nullptr;
-      if (RC rc = SelectStmt::create(db, *subquery_expr->get_sql_node(), select_stmt, {}); RC::SUCCESS != rc) {
-        return rc;
-      }
-      if (select_stmt->type() != StmtType::SELECT) {
-        return RC::INVALID_ARGUMENT;
-      }
-      SelectStmt* ss = static_cast<SelectStmt*>(select_stmt);
-      if (ss->projects().size() > 1) {
-        return RC::INVALID_ARGUMENT;
-      }
-      subquery_expr->set_select_stmt(static_cast<SelectStmt*>(select_stmt));
-      return RC::SUCCESS;
+      return subquery_expr->generate_select_stmt(db, {});
     }
     return RC::SUCCESS;
   };
@@ -131,7 +119,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
   table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
   FilterStmt *filter_stmt = nullptr;
   RC rc = FilterStmt::create(
-      db, table, &table_map, update.conditions.data(), static_cast<int>(update.conditions.size()), filter_stmt);
+      db, table, &table_map, update.conditions, filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
     return rc;

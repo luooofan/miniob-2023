@@ -15,17 +15,29 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/select_stmt.h"
 #include "sql/stmt/filter_stmt.h"
 #include "sql/stmt/groupby_stmt.h"
+#include "sql/stmt/orderby_stmt.h"
 #include "common/log/log.h"
 #include "common/lang/string.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
-#include <unordered_set>
 
 SelectStmt::~SelectStmt()
 {
   if (nullptr != filter_stmt_) {
     delete filter_stmt_;
     filter_stmt_ = nullptr;
+  }
+  if (nullptr != groupby_stmt_) {
+    delete groupby_stmt_;
+    groupby_stmt_ = nullptr;
+  }
+  if (nullptr != orderby_stmt_) {
+    delete orderby_stmt_;
+    orderby_stmt_ = nullptr;
+  }
+  if (nullptr != having_stmt_) {
+    delete having_stmt_;
+    having_stmt_ = nullptr;
   }
 }
 
@@ -49,29 +61,13 @@ static void wildcard_fields(const Table *table, const std::string& alias, std::v
   }
 }
 
-// parent_table_map 是父查询中的 table_map，这里只需要父查询的 table map 即可
-// tables table_alias_map local_table_map 都不需要
-// 嵌套子查询 的情况下在 parent table map 中累积 这里不把它维护成 vector
-RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
-    std::unordered_map<std::string, Table *> parent_table_map)
+RC SelectStmt::process_from_clause(Db *db, std::vector<Table *> &tables,
+    std::unordered_map<std::string, std::string> &table_alias_map,
+    std::unordered_map<std::string, Table *> &table_map,
+    std::vector<InnerJoinSqlNode> &from_relations,
+    std::vector<JoinTables> &join_tables)
 {
-  if (nullptr == db) {
-    LOG_WARN("invalid argument. db is null");
-    return RC::INVALID_ARGUMENT;
-  }
-
-  // 1. 先处理 from clause 收集表信息
-  // from 中的 table 有两个层级 第一级是笛卡尔积 第二级是 INNER JOIN
-  // e.g. (t1 inner join t2 inner join t3, t4) -> (t1, t2, t3), (t4)
-  // 收集表信息的同时这里做了 predicate expr 下推
-  // 处理结果保存在 join_tables 中
-  // 针对表的别名 不能重复
-  std::vector<Table *> tables; // 收集所有 table 主要用于解析 select *
-  std::unordered_map<std::string, std::string> table_alias_map; // <table src name, table alias name>
-  std::unordered_set<std::string> table_alias_set; // 用于检测当前层级别名是否重复
-  std::unordered_map<std::string, Table *> table_map = parent_table_map; // 收集所有 table 包括所有祖先查询的 table
-  std::unordered_map<std::string, Table *> local_table_map; // 每次收集第二级的 table
-  std::vector<JoinTables> join_tables;
+  std::unordered_set<std::string> table_alias_set; // 检测别名是否有重复
 
   // collect tables info in `from` statement
   auto check_and_collect_tables = [&](const std::pair<std::string, std::string>& table_name_pair) {
@@ -90,7 +86,6 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
 
     tables.push_back(table);
     table_map.insert(std::pair<std::string, Table *>(src_name, table));
-    local_table_map.insert(std::pair<std::string, Table *>(src_name, table));
     if (!alias.empty()) {
       // 需要考虑别名重复的问题
       // NOTE: 这里不能用 table_map 因为其中有 parent table
@@ -100,82 +95,24 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       table_alias_set.insert(alias);
       table_alias_map.insert(std::pair<std::string, std::string>(src_name, alias));
       table_map.insert(std::pair<std::string, Table *>(alias, table));
-      local_table_map.insert(std::pair<std::string, Table *>(alias, table));
     }
     return RC::SUCCESS;
-  };
-
-  // 先收集所有的 condition 用于后续下推
-  // conditions: from t1 inner join t2 on "xxx" and "xxx" inner join t3 on "xxx" and "xxx" where "xxx" and "xxx"
-  // NOTE: 这里并没有 clear 原来的 condition 信息，后续要进行语义检查
-  std::vector<ConditionSqlNode> all_conditions = select_sql.conditions;
-  for (size_t i = 0; i < select_sql.relations.size(); ++i) {
-    const InnerJoinSqlNode& relations = select_sql.relations[i];
-    const std::vector<std::vector<ConditionSqlNode>>& conditions = relations.conditions;
-    for (auto& on_conds : conditions) {
-      all_conditions.insert(all_conditions.end(), on_conds.begin(), on_conds.end());
-      // on_conds.clear();
-    }
-    // conditions.clear();
-  }
-
-  // 判断条件表达式是否可以下推
-  auto check_cond_can_push_down = [&local_table_map](Expression* expr) -> RC {
-    // 这里其实不会有聚集函数表达式 having 中才会有
-    if (expr->type() == ExprType::AGGRFUNCTION) {
-      // aggr func expr do not push down
-      return RC::INTERNAL;
-    }
-    // 子查询表达式暂时不允许下推
-    if (expr->type() == ExprType::SUBQUERY) {
-      return RC::INTERNAL;
-    }
-    // 对于字段表达式 其实应该先 check_field 再判断能否下推
-    // 但是这里 check_filed 和下推是分开来做的 这个函数里只负责能否下推的逻辑
-    if (expr->type() == ExprType::FIELD) {
-      FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
-      if (0 != local_table_map.count(field_expr->get_table_name())) {
-        return RC::SUCCESS;
-      }
-      return RC::INTERNAL;
-    }
-    return RC::SUCCESS;
-  };
-
-  // 判断 condition 是否可以下推
-  auto cond_is_ok = [&check_cond_can_push_down, &local_table_map](const ConditionSqlNode& node) ->bool {
-    return RC::SUCCESS == node.left_expr->traverse_check(check_cond_can_push_down) &&
-            RC::SUCCESS == node.right_expr->traverse_check(check_cond_can_push_down);
-  };
-
-  // 从 all_conditions 中挑选出可以下推的 conditions
-  auto pick_conditions = [&cond_is_ok, &all_conditions]() {
-    std::vector<ConditionSqlNode> res;
-    for (auto iter = all_conditions.begin(); iter != all_conditions.end(); ) {
-      if (cond_is_ok(*iter)) {
-        res.emplace_back(*iter);
-        iter = all_conditions.erase(iter);
-      } else {
-        iter++;
-      }
-    }
-    return res;
   };
 
   // t1 inner join t2 inner join t3 -> process t1 -> process t2 -> process t3
-  auto process_one_relation = [&](const std::pair<std::string, std::string>& relation, JoinTables& jt) {
+  auto process_one_relation = [&](const std::pair<std::string, std::string>& relation, JoinTables& jt, Expression* condition) {
     RC rc = RC::SUCCESS;
     // check and collect table to tables table_map local_table_map
     if (rc = check_and_collect_tables(relation); rc != RC::SUCCESS) {
       return rc;
     }
 
-    // get push-down-ok conditions and create filterstmt
-    // 直接在这里完成表达式的下推，优化阶段下推有点子麻烦
-    auto ok_conds = pick_conditions();
+    // create filterstmt
     FilterStmt* filter_stmt = nullptr;
-    if (!ok_conds.empty()) {
-      if (rc = FilterStmt::create(db, table_map[relation.first], &table_map, ok_conds.data(), ok_conds.size(), filter_stmt);
+    if (condition != nullptr) {
+      // TODO 这里重新考虑下父子查询
+      // TODO select * from t1 where c1 in (select * from t2 inner join t3 on t1.c1 > 0 inner join t1) ?
+      if (rc = FilterStmt::create(db, table_map[relation.first], &table_map, condition, filter_stmt);
               rc != RC::SUCCESS) {
         return rc;
       }
@@ -187,35 +124,17 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     return rc;
   };
 
-  // 对 join on conditions 进行语义检查
-  auto check_for_conditions = [&table_map, &table_alias_map, &tables, &db](Expression *expr) {
-    if (expr->type() == ExprType::FIELD) {
-      FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
-      // 因为 tables 一定至少有一个 所以这里可以不传入 default table
-      return field_expr->check_field(table_map, tables, nullptr, table_alias_map);
-    }
-    // 先假设 join on conditions 中不会有子查询
-    return RC::SUCCESS;
-  };
-
-  // 判断 condition 是否符合语义
-  auto cond_checked_ok = [&check_for_conditions, &local_table_map](const ConditionSqlNode& node) ->bool {
-    return RC::SUCCESS == node.left_expr->traverse_check(check_for_conditions) &&
-            RC::SUCCESS == node.right_expr->traverse_check(check_for_conditions);
-  };
-
   // xxx from (t1 inner join t2), (t3), (t4 inner join t5) where xxx
-  for (size_t i = 0; i < select_sql.relations.size(); ++i) {
+  for (size_t i = 0; i < from_relations.size(); ++i) {
     // t1 inner join t2 on xxx inner join t3 on xxx
-    InnerJoinSqlNode& relations = select_sql.relations[i]; // why not const : will clear its conditions
-    local_table_map.clear();
+    InnerJoinSqlNode& relations = from_relations[i]; // why not const : will clear its conditions
     // local_table_map = parent_table_map; // from clause 中的 expr 可以使用父查询的表中的字段
 
     // construct JoinTables
     JoinTables jt;
 
     // base relation: **t1** inner join t2 on xxx inner join t3 on xxx
-    RC rc = process_one_relation(relations.base_relation, jt);
+    RC rc = process_one_relation(relations.base_relation, jt, nullptr);
     if (RC::SUCCESS != rc) {
       LOG_WARN("Create SelectStmt: From Clause: Process Base Relation %s Failed!", relations.base_relation.first.c_str());
       return rc;
@@ -223,36 +142,52 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
 
     // join relations: t1 inner join **t2** on xxx inner join **t3** on xxx
     const std::vector<std::pair<std::string, std::string>>& join_relations = relations.join_relations;
-    std::vector<std::vector<ConditionSqlNode>>& conditions = relations.conditions;
+    std::vector<Expression*>& conditions = relations.conditions;
     for (size_t j = 0; j < join_relations.size(); ++j) {
-      // check table and push down
-      if (RC::SUCCESS != (rc = process_one_relation(join_relations[j], jt))) {
+      if (RC::SUCCESS != (rc = process_one_relation(join_relations[j], jt, conditions[j]))) {
         return rc;
       }
-      // check source conditions
-      // 这里的 check_field 还设置了 name 和 alias 但并不会用到它们
-      for (auto& condition : conditions[j]) {
-        if (!cond_checked_ok(condition)) {
-          return RC::INVALID_ARGUMENT;
-        }
-      }
-      conditions[i].clear();
     }
-    conditions.clear();
+    conditions.clear(); // 其所有权已经都交给了 FilterStmt
 
     // push jt to join_tables
     join_tables.emplace_back(std::move(jt));
   }
-  // 到此为止 已经把 from clause 中的 fieldexpr 都检查完毕
+  return RC::SUCCESS;
+}
+
+// parent_table_map 是父查询中的 table_map，这里只需要父查询的 table map 即可
+// tables table_alias_map local_table_map 都不需要
+// 嵌套子查询 的情况下在 parent table map 中累积 这里不把它维护成 vector
+RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
+    const std::unordered_map<std::string, Table *> &parent_table_map)
+{
+  if (nullptr == db) {
+    LOG_WARN("invalid argument. db is null");
+    return RC::INVALID_ARGUMENT;
+  }
+
+  // 1. 先处理 from clause 收集表信息
+  // from 中的 table 有两个层级 第一级是笛卡尔积 第二级是 INNER JOIN
+  // e.g. (t1 inner join t2 inner join t3, t4) -> (t1, t2, t3), (t4)
+  std::vector<Table *> tables; // 收集所有 table 主要用于解析 select *
+  std::unordered_map<std::string, std::string> table_alias_map; // <table src name, table alias name>
+  std::unordered_map<std::string, Table *> table_map = parent_table_map; // 收集所有 table 包括所有祖先查询的 table
+  std::vector<JoinTables> join_tables;
+  RC rc = process_from_clause(db, tables, table_alias_map, table_map, select_sql.relations, join_tables);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("SelectStmt-FromClause: Process Failed! RETURN %d", rc);
+    return rc;
+  }
 
   // 2. collect query exprs in `select` statement
   // 语义解析 check & 设置表达式 name alias 用于客户端输出的表头
   // 要处理 *, *.*, t1.* 这种情况
   // 要 check field 判断**所有** FieldExpr 是否合法：有一个唯一对应的 table 即合法 不能没有表 也不能出现歧义
-  bool is_single_table = (tables.size() == 1);
   std::vector<std::unique_ptr<Expression>> projects;
   Table *default_table = nullptr;
-  if (tables.size() == 1) {
+  bool is_single_table = (tables.size() == 1);
+  if (is_single_table) {
     default_table = tables[0];
   }
 
@@ -260,21 +195,25 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
   // projects 中不会出现 subquery
   bool has_aggr_func_expr = false;
   auto check_project_expr = [&table_map, &tables, &default_table, &table_alias_map, &has_aggr_func_expr](Expression *expr) {
-    if (expr->type() == ExprType::AGGRFUNCTION) {
-      has_aggr_func_expr = true;
-    } else if (expr->type() == ExprType::SYSFUNCTION) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      return RC::INVALID_ARGUMENT;
+    }
+    if (expr->type() == ExprType::SYSFUNCTION) {
       SysFuncExpr* sysfunc_expr = static_cast<SysFuncExpr*>(expr);
       return sysfunc_expr->check_param_type_and_number();
-    } else if (expr->type() == ExprType::FIELD) {
+    }
+    if (expr->type() == ExprType::FIELD) {
       FieldExpr* field_expr = static_cast<FieldExpr*>(expr);
       return field_expr->check_field(table_map, tables, default_table, table_alias_map);
+    }
+    if (expr->type() == ExprType::AGGRFUNCTION) {
+      has_aggr_func_expr = true;
     }
     return RC::SUCCESS;
   };
 
-  for (int i = static_cast<int>(select_sql.project_exprs.size()) - 1; i >= 0; i--) {
-    RC rc = RC::SUCCESS;
-    Expression* expr = select_sql.project_exprs[i]; // 将 sqlNode 的表达式转移到 SelectStmt 中
+  for (size_t i = 0; i < select_sql.project_exprs.size(); ++i) {
+    Expression* expr = select_sql.project_exprs[i];
     // 单独处理 select 后跟 * 的情况 select *; select *.*; select t1.*
     if (expr->type() == ExprType::FIELD) {
       FieldExpr *field_expr = static_cast<FieldExpr*>(expr);
@@ -320,31 +259,16 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       projects.emplace_back(expr);
     }
   }
-  select_sql.project_exprs.clear();
-  // 到此为止，projects 中的所有 FieldExpr 也都检查完毕了
+  select_sql.project_exprs.clear(); // 管理权已经移交到 projects 中 后续会交给 select stmt
 
-  LOG_INFO("got %d tables in from stmt and %d exprs in query stmt", tables.size(), projects.size());
+  LOG_INFO("got %d tables in from clause and %d exprs in query clause", tables.size(), projects.size());
 
-  RC rc = RC::SUCCESS;
-
-  // create filter statement in `where` statement
-  // 要先检查 where 语句中的所有 FieldExpr
-  for (auto & condition : select_sql.conditions) {
-    if (!cond_checked_ok(condition)) {
-      return RC::INVALID_ARGUMENT;
-    }
-  }
-  select_sql.conditions.clear();
-  // 到此为止，where 中的所有 FieldExpr 也都检查完毕了
-
-  // NOTE: 这里 all_conditions 可能是空的
-  FilterStmt *filter_stmt = nullptr;
-  if (!all_conditions.empty()) {
+  FilterStmt *filter_stmt = nullptr; // TODO release memory when failed
+  if (select_sql.conditions != nullptr) {
     rc = FilterStmt::create(db,
         default_table,
         &table_map,
-        all_conditions.data(),
-        static_cast<int>(all_conditions.size()),
+        select_sql.conditions,
         filter_stmt);
     if (rc != RC::SUCCESS) {
       LOG_WARN("cannot construct filter stmt");
@@ -352,23 +276,142 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     }
   }
 
-  // TODO 还未在语法层面支持 group by clause
-  GroupByStmt *groupby_stmt = nullptr;
+  GroupByStmt *groupby_stmt = nullptr; // TODO release memory when failed
+  FilterStmt *having_filter_stmt = nullptr; // TODO release memory when failed
   // 有聚集函数表达式 或者有 group by clause 就要添加 group by stmt
-  if (has_aggr_func_expr /* || nullptr != select_sql.groupby_ */) {
+  if (has_aggr_func_expr || select_sql.groupby_exprs.size() > 0) {
     // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
     std::vector<std::unique_ptr<AggrFuncExpr>> aggr_exprs;
-    std::vector<std::unique_ptr<FieldExpr>> field_exprs_not_in_aggr;
+    //select 子句中出现的所有 fieldexpr 都需要传递收集起来,
+    std::vector<std::unique_ptr<FieldExpr>> field_exprs;//这个 vector 需要传递给 order by 算子
+    std::vector<std::unique_ptr<Expression>> field_exprs_not_aggr; //select 后的所有非 aggrexpr 的 field_expr,用来判断语句是否合法 
     // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
     auto collect_aggr_exprs = [&aggr_exprs](Expression * expr) {
       if (expr->type() == ExprType::AGGRFUNCTION) {
         aggr_exprs.emplace_back(static_cast<AggrFuncExpr*>(static_cast<AggrFuncExpr*>(expr)->deep_copy().release()));
       }
     };
-    // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
-    auto collect_field_exprs = [&field_exprs_not_in_aggr](Expression * expr) {
+    // 用于从 project exprs 中提取所有field expr,
+    auto collect_field_exprs = [&field_exprs](Expression * expr) {
       if (expr->type() == ExprType::FIELD) {
-        field_exprs_not_in_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
+        field_exprs.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
+      }
+    };
+    // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
+    auto collect_exprs_not_aggexpr = [&field_exprs_not_aggr](Expression * expr) {
+        if (expr->type() == ExprType::FIELD) {
+        field_exprs_not_aggr.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
+      }
+    };
+    // do extract
+    for (auto& project : projects) {
+      project->traverse(collect_aggr_exprs);//提取所有 aggexpr
+      project->traverse(collect_field_exprs );//提取 select clause 中的所有 field_expr,传递给groupby stmt
+      //project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+
+      //提取所有不在 aggexpr 中的 field_expr，用于语义检查
+      project->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+    }
+    //针对 having 后的表达式，需要做和上面相同的三个提取过程
+    // select id, max(score) from t_group_by group by id having count(*)>5;
+    if (select_sql.having_conditions != nullptr) {
+      rc = FilterStmt::create(db,
+          default_table,
+          &table_map,
+          select_sql.having_conditions,
+          having_filter_stmt);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("cannot construct filter stmt");
+        return rc;
+      }
+      // a. create filter stmt 中 ，having 子句中的已经内容进行 check_filed 了,并且 如果是 agg_expr，就先取出来
+      auto & filter_expr = having_filter_stmt->condition();
+      filter_expr->traverse(collect_aggr_exprs);//提取所有 aggexpr
+      filter_expr->traverse(collect_field_exprs );//提取 select clause 中的所有 field_expr,传递给groupby stmt
+      //project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+      //提取所有不在 aggexpr 中的 field_expr，用于语义检查
+      filter_expr->traverse(collect_exprs_not_aggexpr,[](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
+      select_sql.having_conditions = nullptr;
+    }
+
+    // 2. 语义检查 check:
+    // - 聚集函数参数个数、参数为 * 的检查是在 syntax parser 完成
+    // - 聚集函数中的字段 OK select clause 检查过了
+
+    // - 没有 group by clause 时，不应该有非聚集函数中的字段
+    if (!field_exprs_not_aggr.empty() && select_sql.groupby_exprs.size() == 0) {
+      LOG_WARN("No Group By. But Has Fields Not In Aggr Func");
+      return RC::INVALID_ARGUMENT;
+    }
+
+    // - 有 group by，要判断 select clause 和 having clause 中的 expr (除 agg_expr) 在一个 group 中只能有一个值
+    // e.g. select min(c1), c2+c3*c4 from t1 group by c2+c3, c4; YES
+    //      select min(c1), c2, c3+c4 from t1 group by c2+c3;    NO
+    if (select_sql.groupby_exprs.size() > 0) {
+      // do check field
+      for (size_t i = 0; i < select_sql.groupby_exprs.size(); i++) {
+        Expression* expr = select_sql.groupby_exprs[i];
+        if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
+          LOG_WARN("project expr traverse check_field error!");
+          return rc;
+        }
+      }
+
+      // 先提取 select 后的非 aggexpr ，然后判断其是否是 groupby 中
+      std::vector<Expression*> &groupby_exprs =  select_sql.groupby_exprs;
+      auto check_expr_in_groupby_exprs = [&groupby_exprs](std::unique_ptr<Expression>& expr) {
+        for(auto tmp : groupby_exprs) {
+          if(expr->name() == tmp->name()) //通过表达式的名称进行判断
+            return true;
+        }
+        return false;
+      };
+
+      // TODO 没有检查 having 和 order by 子句中的表达式
+      for (auto& project : projects) {
+        if(project->type() != ExprType::AGGRFUNCTION) {
+          if(!check_expr_in_groupby_exprs(project)) {
+            LOG_WARN("expr not in groupby_exprs");
+            return RC::INVALID_ARGUMENT;
+          }
+        }
+      }
+    }
+
+    // 3. create groupby stmt
+    rc = GroupByStmt::create(db,
+        default_table,
+        &table_map,
+        select_sql.groupby_exprs,
+        groupby_stmt,
+        std::move(aggr_exprs),
+        std::move(field_exprs));
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("cannot construct groupby stmt");
+      return rc;
+    }
+    select_sql.groupby_exprs.clear();
+    // 4. 在物理计划生成阶段向 groupby_operator 下挂一个 orderby_operator
+  }
+
+  OrderByStmt *orderby_stmt = nullptr; // TODO release memory when failed
+  // create orderby stmt
+  // 因为我们 order by 的实现要拷贝所有需要的数据 所以还是要提取 TODO 这里可能会重复 但是先不考虑
+  // - 先提取 select clause 后的 field_expr(非agg_expr中的)，和 agg_expr，这里提取时已经不需要再进行 check 了，因为在 select clause
+  // - order by 后的 expr 进行 check field
+  if(select_sql.orderbys.size() > 0) {
+    // 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
+    std::vector<std::unique_ptr<Expression>> expr_for_orderby;
+    // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
+    auto collect_aggr_exprs = [&expr_for_orderby](Expression * expr) {
+      if (expr->type() == ExprType::AGGRFUNCTION) {
+        expr_for_orderby.emplace_back(static_cast<AggrFuncExpr*>(static_cast<AggrFuncExpr*>(expr)->deep_copy().release()));
+      }
+    };
+    // 用于从 project exprs 中提取所有不在 aggr func expr 中的 field expr
+    auto collect_field_exprs = [&expr_for_orderby](Expression * expr) {
+      if (expr->type() == ExprType::FIELD) {
+        expr_for_orderby.emplace_back(static_cast<FieldExpr*>(static_cast<FieldExpr*>(expr)->deep_copy().release()));
       }
     };
     // do extract
@@ -376,40 +419,36 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       project->traverse(collect_aggr_exprs);
       project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
     }
-
-    // 2. 语义检查 check:
-    // - 聚集函数参数个数、参数为 * 的检查是在 syntax parser 完成
-    // - 聚集函数中的字段 OK
-    // - 非聚集函数中的字段应该 必须在 group by 的字段中
-    // - 没有 group by clause 时，不应该有非聚集函数中的字段
-    // 当前没有 group by，所以只 check 一下有没有不在聚集函数中的字段即可
-    if (!field_exprs_not_in_aggr.empty()) {
-      LOG_ERROR("No Group By. But Has Fields Not In Aggr Func");
-      return RC::INVALID_ARGUMENT;
+    // TODO 检查应该放到 create 里面去检查
+    // do check field
+    for (size_t i = 0 ; i < select_sql.orderbys.size() ; i++){
+      Expression* expr = select_sql.orderbys[i].expr;
+      if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
+      LOG_WARN("project expr traverse check_field error!");
+      return rc;
+      }
     }
-    
-    // 3. create groupby stmt
-    rc = GroupByStmt::create(db,
-        default_table,
-        &table_map,
-        nullptr, //暂时先传入 nullptr
-        groupby_stmt,
-        std::move(aggr_exprs),
-        std::move(field_exprs_not_in_aggr));
-    if (rc != RC::SUCCESS) {
-      LOG_WARN("cannot construct groupby stmt");
+    rc = OrderByStmt::create(db,
+      default_table,
+      &table_map,
+      select_sql.orderbys,
+      orderby_stmt,
+      std::move(expr_for_orderby));
+    if (RC::SUCCESS != rc) {
       return rc;
     }
+    select_sql.orderbys.clear();
   }
 
   // everything alright
   // NOTE: 此时 select_sql 原有的部分信息已被移除 后续不得使用
   SelectStmt *select_stmt = new SelectStmt();
-  // TODO add expression copy
   select_stmt->join_tables_.swap(join_tables);
   select_stmt->projects_.swap(projects);
   select_stmt->filter_stmt_ = filter_stmt; // maybe nullptr
   select_stmt->groupby_stmt_ = groupby_stmt; // maybe nullptr
+  select_stmt->orderby_stmt_ = orderby_stmt; // maybe nullptr
+  select_stmt->having_stmt_ = having_filter_stmt; // maybe nullptr
   stmt = select_stmt;
   return RC::SUCCESS;
 }

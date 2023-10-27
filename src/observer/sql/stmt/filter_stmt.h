@@ -24,56 +24,6 @@ class Db;
 class Table;
 class FieldMeta;
 
-class FilterUnit 
-{
-public:
-  FilterUnit() = default;
-  ~FilterUnit()
-  {}
-
-  void set_comp(CompOp comp)
-  {
-    comp_ = comp;
-  }
-
-  CompOp comp() const
-  {
-    return comp_;
-  }
-
-  void set_left(std::unique_ptr<Expression>&& left)
-  {
-    left_ = std::move(left);
-  }
-  void set_right(std::unique_ptr<Expression>&& right)
-  {
-    right_ = std::move(right);
-  }
-
-  std::unique_ptr<Expression> &left()
-  {
-    return left_;
-  }
-  std::unique_ptr<Expression> &right()
-  {
-    return right_;
-  }
-
-  const std::unique_ptr<Expression> &left() const
-  {
-    return left_;
-  }
-  const std::unique_ptr<Expression> &right() const
-  {
-    return right_;
-  }
-
-private:
-  CompOp comp_ = NO_OP;
-  std::unique_ptr<Expression> left_;
-  std::unique_ptr<Expression> right_;
-};
-
 /**
  * @brief Filter/谓词/过滤语句
  * @ingroup Statement
@@ -82,21 +32,18 @@ class FilterStmt
 {
 public:
   FilterStmt() = default;
-  virtual ~FilterStmt();
+  virtual ~FilterStmt() = default;
 
 public:
-  const std::vector<FilterUnit *> &filter_units() const
+  std::unique_ptr<Expression>& condition()
   {
-    return filter_units_;
+    return condition_;
   }
 
 public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-      const ConditionSqlNode *conditions, int condition_num, FilterStmt *&stmt);
-
-  static RC create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-      const ConditionSqlNode &condition, FilterUnit *&filter_unit);
+      Expression *condition, FilterStmt *&stmt);
 
 private:
-  std::vector<FilterUnit *> filter_units_;  // 默认当前都是AND关系
+  std::unique_ptr<Expression> condition_;
 };

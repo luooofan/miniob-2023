@@ -70,6 +70,7 @@ public:
   /**
    * @brief 根据具体的tuple，来计算当前表达式的值。tuple有可能是一个具体某个表的行数据
    */
+  // TODO 取消 const，有些表达式需要维护内部状态，比如 FieldExpr 维护 is_first
   virtual RC get_value(const Tuple &tuple, Value &value) const = 0;
 
   /**
@@ -177,6 +178,9 @@ private:
   Field field_;
   const std::string table_name_;
   const std::string field_name_;
+
+  int index_ = -1;
+  bool is_first_ = true;
 };
 
 /**
@@ -296,6 +300,7 @@ private:
 class ComparisonExpr : public Expression 
 {
 public:
+  ComparisonExpr(CompOp comp, Expression* left, Expression* right);
   ComparisonExpr(CompOp comp, std::unique_ptr<Expression> left, std::unique_ptr<Expression> right);
   virtual ~ComparisonExpr();
 
@@ -386,6 +391,7 @@ public:
   };
 
 public:
+  ConjunctionExpr(Type type, Expression* left, Expression* right);
   ConjunctionExpr(Type type, std::vector<std::unique_ptr<Expression>> children);
   virtual ~ConjunctionExpr() = default;
 
@@ -625,6 +631,9 @@ private:
   AggrFuncType type_;
   std::unique_ptr<Expression> param_;
   bool param_is_constexpr_ = false;
+
+  bool is_first_ = true;
+  int index_ = -1;
 };
 
 class SysFuncExpr : public Expression {
@@ -755,13 +764,9 @@ public:
 
   std::unique_ptr<Expression> deep_copy() const;
 
-  const std::unique_ptr<SelectSqlNode>& get_sql_node() const;
-  void set_select_stmt(SelectStmt* stmt);
-  const std::unique_ptr<SelectStmt>& get_select_stmt() const;
-  void set_logical_oper(std::unique_ptr<LogicalOperator>&& oper);
-  const std::unique_ptr<LogicalOperator>& get_logical_oper();
-  void set_physical_oper(std::unique_ptr<PhysicalOperator>&& oper);
-  const std::unique_ptr<PhysicalOperator>& get_physical_oper();
+  RC generate_select_stmt(Db* db, const std::unordered_map<std::string, Table *> &tables);
+  RC generate_logical_oper();
+  RC generate_physical_oper();
 
 private:
   std::unique_ptr<SelectSqlNode> sql_node_;

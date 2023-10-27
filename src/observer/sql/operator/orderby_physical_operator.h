@@ -13,26 +13,27 @@ See the Mulan PSL v2 for more details. */
 #include <memory>
 #include "sql/operator/physical_operator.h"
 #include "sql/expr/expression.h"
-#include "sql/stmt/groupby_stmt.h"
+#include "sql/stmt/orderby_stmt.h"
+#include "sql/expr/tuple.h"
 
 /**
  * @brief 物理算子
  * @ingroup PhysicalOperator
  */
-class GroupByPhysicalOperator : public PhysicalOperator
+class OrderByPhysicalOperator : public PhysicalOperator
 {
 public:
-  GroupByPhysicalOperator(std::vector<std::unique_ptr<Expression>>&& groupby_fields,
-                          std::vector<std::unique_ptr<AggrFuncExpr>> &&agg_exprs,
-                          std::vector<std::unique_ptr<FieldExpr>> &&field_exprs);
+  OrderByPhysicalOperator(std::vector<std::unique_ptr<OrderByUnit >> &&orderby_units,
+                         std::vector<std::unique_ptr<Expression>> &&exprs);
 
-  virtual ~GroupByPhysicalOperator() = default;
+  virtual ~OrderByPhysicalOperator() = default;
 
   PhysicalOperatorType type() const override
   {
-    return PhysicalOperatorType::GROUPBY;
+    return PhysicalOperatorType::ORDERBY;
   }
 
+  RC fetch_and_sort_tables();
   RC open(Trx *trx) override;
   RC next() override;
   RC close() override;
@@ -40,11 +41,10 @@ public:
   Tuple *current_tuple() override;
 
 private:
-  bool is_first_ = true;
-  bool is_new_group_ = true;
-  bool is_record_eof_ = false;
-  std::vector<std::unique_ptr<Expression>> groupby_fields_;
-  std::vector<Value> pre_values_;  // its size equal to groupby_units.size
+  std::vector<std::unique_ptr<OrderByUnit >> orderby_units_; //排序列
+  std::vector<std::vector<Value>> values_;
+  SplicedTuple tuple_;
 
-  GroupTuple tuple_;
+  std::vector<int> ordered_idx_;//存储从 values_中取 数据的顺序
+  std::vector<int>::iterator it_;
 };

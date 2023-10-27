@@ -20,37 +20,32 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse_defs.h"
 #include "sql/parser/value.h"
 #include "storage/field/field.h"
-#include "sql/stmt/groupby_stmt.h"
+#include "sql/stmt/orderby_stmt.h"
 /**
  * @brief 逻辑算子
  * @ingroup LogicalOperator
  */
-class GroupByLogicalOperator : public LogicalOperator
+class OrderByLogicalOperator : public LogicalOperator
 {
 public:
-  GroupByLogicalOperator(std::vector<std::unique_ptr<Expression>>&& groupby_fields,
-                         std::vector<std::unique_ptr<AggrFuncExpr>> &&agg_exprs,
-                         std::vector<std::unique_ptr<FieldExpr>> &&field_exprs);
-  virtual ~GroupByLogicalOperator() = default;
+  OrderByLogicalOperator(std::vector<std::unique_ptr<OrderByUnit >> &&orderby_units,
+                         std::vector<std::unique_ptr<Expression>> &&exprs);
+  virtual ~OrderByLogicalOperator() = default;
 
   LogicalOperatorType type() const override
   {
-    return LogicalOperatorType::GROUPBY;
+    return LogicalOperatorType::ORDERBY;
   }
-  std::vector<std::unique_ptr<Expression>>& groupby_fields()
+  std::vector<std::unique_ptr<OrderByUnit >> &orderby_units()
   {
-    return groupby_fields_;
+    return orderby_units_;
   }
-  std::vector<std::unique_ptr<AggrFuncExpr>> &agg_exprs()
+  std::vector<std::unique_ptr<Expression>> &exprs()
   {
-    return agg_exprs_;
-  }
-  std::vector<std::unique_ptr<FieldExpr>> &field_exprs()
-  {
-    return field_exprs_;
+    return exprs_;
   }
 private:
-  std::vector<std::unique_ptr<Expression>> groupby_fields_;
-  std::vector<std::unique_ptr<AggrFuncExpr>> agg_exprs_;
-  std::vector<std::unique_ptr<FieldExpr>> field_exprs_;
+  std::vector<std::unique_ptr<OrderByUnit >> orderby_units_; //排序列
+  ///在 create order by stmt 之前提取 select clause 后的 field_expr (非a gg_expr 中的)和 agg_expr
+  std::vector<std::unique_ptr<Expression>> exprs_;
 };

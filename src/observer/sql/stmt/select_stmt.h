@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include <unordered_set>
 #include <vector>
 #include <memory>
 
@@ -27,6 +28,7 @@ class SQLStageEvent;
 class FieldMeta;
 class FilterStmt;
 class GroupByStmt;
+class OrderByStmt;
 class Db;
 class Table;
 
@@ -71,7 +73,7 @@ public:
 public:
   // select_sql.project exprs would be clear
   static RC create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
-    std::unordered_map<std::string, Table *> parent_table_map = {});
+    const std::unordered_map<std::string, Table *> &parent_table_map = {});
 
 public:
   const std::vector<JoinTables> &join_tables() const
@@ -82,17 +84,34 @@ public:
   {
     return filter_stmt_;
   }
+  FilterStmt *having_stmt() const
+  {
+    return having_stmt_;
+  }
   GroupByStmt *groupby_stmt() const
   {
     return groupby_stmt_;
+  }
+  OrderByStmt *orderby_stmt() const
+  {
+    return orderby_stmt_;
   }
   std::vector<std::unique_ptr<Expression>> &projects()
   {
     return projects_;
   }
 private:
+  static RC process_from_clause(Db *db, std::vector<Table *> &tables,
+    std::unordered_map<std::string, std::string> &table_alias_map,
+    std::unordered_map<std::string, Table *> &table_map,
+    std::vector<InnerJoinSqlNode> &from_relations,
+    std::vector<JoinTables> &join_tables);
+private:
   std::vector<std::unique_ptr<Expression>> projects_;
   std::vector<JoinTables> join_tables_;
+  // TODO 下面这些应该改为 unique_ptr
   FilterStmt *filter_stmt_ = nullptr;
-  GroupByStmt * groupby_stmt_ = nullptr;
+  GroupByStmt *groupby_stmt_ = nullptr;
+  OrderByStmt *orderby_stmt_ = nullptr;
+  FilterStmt *having_stmt_ = nullptr;
 };

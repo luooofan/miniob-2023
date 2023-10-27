@@ -23,6 +23,7 @@ See the Mulan PSL v2 for more details. */
 
 class Expression;
 class FieldExpr;
+class OrderByUnit;
 
 typedef enum { AGG_MAX, AGG_MIN, AGG_SUM, AGG_AVG, AGG_COUNT, AGGR_FUNC_TYPE_NUM } AggrFuncType;
 typedef enum { SYS_FUNC_LENGTH, SYS_FUNC_ROUND, SYS_FUNC_DATE_FORMAT,SYS_FUNC_TYPE_NUM } SysFuncType;
@@ -68,24 +69,11 @@ enum CompOp
   NO_OP
 };
 
-/**
- * @brief 表示一个条件比较
- * @ingroup SQLParser
- * @details 条件比较就是SQL查询中的 where a>b 这种。
- * 一个条件比较是有两部分组成的，称为左边和右边。
- * 左边和右边理论上都可以是任意的数据，比如是字段（属性，列），也可以是数值常量。
- * 这个结构中记录的仅仅支持字段和值。
- */
-struct ConditionSqlNode
-{
-  Expression *left_expr;
-  CompOp          comp;            ///< comparison operator
-  Expression *right_expr;
-};
 
-struct GroupBySqlNode
+struct OrderBySqlNode
 {
-  std::vector<FieldExpr *> exprs_;
+  Expression * expr = nullptr;
+  bool is_asc;// true 为升序
 };
 
 /**
@@ -97,7 +85,7 @@ struct InnerJoinSqlNode
 {
   std::pair<std::string, std::string> base_relation;
   std::vector<std::pair<std::string, std::string>> join_relations;
-  std::vector<std::vector<ConditionSqlNode>> conditions;
+  std::vector<Expression*> conditions;
 };
 
 /**
@@ -106,16 +94,16 @@ struct InnerJoinSqlNode
  * @details 一个正常的select语句描述起来比这个要复杂很多，这里做了简化。
  * 一个select语句由三部分组成，分别是select, from, where。
  * select部分表示要查询的字段，from部分表示要查询的表，where部分表示查询的条件。
- * 比如 from 中可以是多个表，也可以是另一个查询语句，这里仅仅支持表，也就是 relations。
- * where 条件 conditions，这里表示使用AND串联起来多个条件。正常的SQL语句会有OR，NOT等，
- * 甚至可以包含复杂的表达式。
  */
 
 struct SelectSqlNode
 {
   std::vector<Expression *>       project_exprs; ///< attributes in select clause
   std::vector<InnerJoinSqlNode>   relations;///< 查询的表
-  std::vector<ConditionSqlNode>   conditions;    ///< 查询条件，使用AND串联起来多个条件
+  Expression *       conditions = nullptr;    ///< 查询条件
+  std::vector<OrderBySqlNode>     orderbys; ///< attributes in order clause
+  std::vector<Expression *>       groupby_exprs;  ///< groupby 
+  Expression *       having_conditions = nullptr;  ///< groupby having
 };
 
 /**
@@ -147,8 +135,8 @@ struct InsertSqlNode
  */
 struct DeleteSqlNode
 {
-  std::string                   relation_name;  ///< Relation to delete from
-  std::vector<ConditionSqlNode> conditions;
+  std::string    relation_name;  ///< Relation to delete from
+  Expression*    conditions = nullptr;
 };
 
 /**
@@ -158,14 +146,14 @@ struct DeleteSqlNode
 struct UpdateKV
 {
   std::string attr_name;
-  Expression* value;
+  Expression* value = nullptr;
 };
 struct UpdateSqlNode
 {
   std::string                   relation_name;         ///< Relation to update
   std::vector<std::string>      attribute_names;       ///< 更新的字段，仅支持多个字段
   std::vector<Expression*>      values;                ///< 更新的值，仅支持多个字段
-  std::vector<ConditionSqlNode> conditions;
+  Expression*                   conditions = nullptr;
 };
 
 /**

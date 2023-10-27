@@ -108,7 +108,7 @@ public:
    * @param spec cell的描述
    * @param[out] cell 返回的cell
    */
-  virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const = 0;
+  virtual RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const = 0;
 
 
   virtual std::string to_string() const
@@ -162,6 +162,7 @@ public:
     ASSERT(nullptr != table, "RowTuple set_schema with a null table");
     table_ = table;
     const std::vector<FieldMeta> *fields = table_->table_meta().field_metas();
+    this->speces_.clear();//有的算子会 反复open close 
     this->speces_.reserve(fields->size());
     for (const FieldMeta &field : *fields) {
       speces_.push_back(new FieldExpr(table, &field));
@@ -206,7 +207,7 @@ public:
     return RC::SUCCESS;
   }
 
-  RC find_cell(const TupleCellSpec &spec, Value &cell) const override
+  RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const override
   {
     const char *table_name = spec.table_name();
     const char *field_name = spec.field_name();
@@ -218,6 +219,7 @@ public:
       const FieldExpr *field_expr = speces_[i];
       const Field &field = field_expr->field();
       if (0 == strcmp(field_name, field.field_name())) {
+        index = i;
         return cell_at(i, cell);
       }
     }
@@ -294,9 +296,9 @@ public:
     return exprs_[index]->get_value(*tuple_, cell);
   }
 
-  RC find_cell(const TupleCellSpec &spec, Value &cell) const override
+  RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const override
   {
-    return tuple_->find_cell(spec, cell);
+    return tuple_->find_cell(spec, cell,index);//TODO 应该不会走到这里
   }
 
   const std::vector<std::unique_ptr<Expression>>& expressions() const
@@ -347,7 +349,7 @@ public:
     return expr->try_get_value(cell);
   }
 
-  RC find_cell(const TupleCellSpec &spec, Value &cell) const override
+  RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const override
   {
     for (const std::unique_ptr<Expression> &expr : expressions_) {
       if (0 == strcmp(spec.alias(), expr->name().c_str())) {
@@ -391,7 +393,7 @@ public:
     return RC::SUCCESS;
   }
 
-  virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const override
+  virtual RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const override
   {
     return RC::INTERNAL;
   }
@@ -440,14 +442,20 @@ public:
     return RC::NOTFOUND;
   }
 
-  RC find_cell(const TupleCellSpec &spec, Value &value) const override
+  RC find_cell(const TupleCellSpec &spec, Value &value,int &index) const override
   {
-    RC rc = left_->find_cell(spec, value);
+    RC rc = left_->find_cell(spec, value,index);
     if (rc == RC::SUCCESS || rc != RC::NOTFOUND) {
       return rc;
     }
-
-    return right_->find_cell(spec, value);
+ 
+    rc = right_->find_cell(spec, value,index);
+    if( rc != RC::SUCCESS)
+    {
+      return rc;
+    }
+    index += left_->cell_num();
+    return rc;
   }
 private:
   Tuple *left_ = nullptr;
@@ -475,10 +483,20 @@ public:
     if (tuple_ == nullptr) {
       return RC::INTERNAL;
     }
-    return tuple_->cell_at(index, cell);
+    //field_results_ 数组的下标从0开始，aggr_results_ 的下标从 field_results_.size() 开始
+    if (index < 0 || index >= aggr_results_.size() + field_results_.size()) {
+      return RC::NOTFOUND;
+    }
+
+    if(index < field_results_.size()){
+      cell = field_results_[index].result();
+    }else {
+      cell = aggr_results_[index - field_results_.size()].result();
+    }
+    return RC::SUCCESS;
   }
 
-  size_t find_index_by_name(std::string expr_name) const
+  size_t find_agg_index_by_name(std::string expr_name) const
   {
     for(size_t i = 0; i < aggr_results_.size(); ++i) {
       if(expr_name == aggr_results_[i].name()) {
@@ -487,16 +505,18 @@ public:
     }
     return -1;
   }
-  RC find_cell(std::string expr_name,Value &cell) const
-  {
-    int index = find_index_by_name(expr_name);
-    if (index < 0 || index > aggr_results_.size()) {
-      return RC::NOTFOUND;
-    }
-    cell = aggr_results_[index].result();
-    return RC::SUCCESS;
-  }
-  RC find_cell(const TupleCellSpec &spec, Value &cell) const override
+  // RC find_cell(std::string expr_name,Value &cell,int &index) const
+  // {
+  //   index = find_agg_index_by_name(expr_name);
+  //   if (index < 0 || index >= aggr_results_.size()) {
+  //     return RC::NOTFOUND;
+  //   }
+  //   cell = aggr_results_[index].result();
+  //   ////因为 GroupTuple 有两个存放结果的 vector ，所以给 aggr_results_ 返回的 index 加上一个偏移量
+  //   index += field_results_.size();
+  //   return RC::SUCCESS;
+  // }
+  RC find_cell(const TupleCellSpec &spec, Value &cell,int& index) const override
   {
     // 先从字段表达式里面找
     for (size_t i = 0; i < field_results_.size(); ++i) {
@@ -504,12 +524,21 @@ public:
       if (std::string(expr.field_name()) == std::string(spec.field_name()) && 
           std::string(expr.table_name()) == std::string(spec.table_name()) ) {
         cell = field_results_[i].result();
+        index = i;
         LOG_INFO("Field is found in field_exprs");
         return RC::SUCCESS;
       }
     }
     // 找不到再根据别名从聚集函数表达式里面找
-    return find_cell(std::string(spec.alias()), cell);
+    //return find_cell(std::string(spec.alias()), cell,index);
+    index = find_agg_index_by_name(std::string(spec.alias()));
+    if (index < 0 || index >= aggr_results_.size()) {
+      return RC::NOTFOUND;
+    }
+    cell = aggr_results_[index].result();
+    ////因为 GroupTuple 有两个存放结果的 vector ，所以给 aggr_results_ 返回的 index 加上一个偏移量
+    index += field_results_.size();
+    return RC::SUCCESS;
   }
 
   void init(std::vector<std::unique_ptr<AggrFuncExpr>> &&aggr_exprs,
@@ -724,5 +753,81 @@ public:
 
   RC cell_at(int index, Value &cell) const { return RC::INVALID_ARGUMENT; }
 
-  RC find_cell(const TupleCellSpec &spec, Value &cell) const { return RC::INVALID_ARGUMENT; }
+  RC find_cell(const TupleCellSpec &spec, Value &cell,int &index) const { return RC::INVALID_ARGUMENT; }
+};
+
+
+/**
+ * @brief 一些常量值组成的Tuple,用于 orderby 算子中
+ * @ingroup Tuple
+ */
+class SplicedTuple : public Tuple 
+{
+public:
+  SplicedTuple() = default;
+  virtual ~SplicedTuple() = default;
+
+  void set_cells(const std::vector<Value>* cells)
+  {
+    cells_ = cells;
+  }
+
+  virtual int cell_num() const override
+  {
+    return static_cast<int>((*cells_).size());
+  }
+
+  virtual RC cell_at(int index, Value &cell) const override
+  {
+    if (index < 0 || index >= cell_num()) {
+      return RC::NOTFOUND;
+    }
+
+    cell = (*cells_)[index];
+    return RC::SUCCESS;
+  }
+
+  RC find_cell(const TupleCellSpec &spec, Value &cell,int & index) const override
+  {
+    // 先从字段表达式里面找
+    for (size_t i = 0; i < exprs_.size(); ++i) {
+      if(exprs_[i]->type() == ExprType::FIELD){
+        const FieldExpr * expr =static_cast<FieldExpr*>(exprs_[i].get());
+        if (std::string(expr->field_name()) == std::string(spec.field_name()) && 
+            std::string(expr->table_name()) == std::string(spec.table_name()) ) {
+            cell = (*cells_)[i];
+            index = i;
+          LOG_INFO("Field is found in field_exprs");
+          return RC::SUCCESS;
+        }
+      }else if(exprs_[i]->type() == ExprType::AGGRFUNCTION){
+        if(spec.alias() == exprs_[i]->name()){
+          cell = (*cells_)[i];
+          index = i;
+          return RC::SUCCESS;
+        }
+      }else{
+        LOG_WARN("find cell in SplicedTuple error!");
+        return RC::INTERNAL;
+      }
+    }
+    LOG_WARN(" not find cell in SplicedTuple ");
+    return RC::NOTFOUND;
+  }
+
+  RC init(std::vector<std::unique_ptr<Expression>> &&exprs)
+  {
+    exprs_ = std::move(exprs);
+    return RC::SUCCESS;
+  }
+  
+  std::vector<std::unique_ptr<Expression>> &exprs()
+  {
+    return exprs_;
+  }
+
+private:
+  const std::vector<Value> *cells_ = nullptr;
+  //在 create order by stmt 之前提取的  select clause 后的 field_expr (非a gg_expr 中的)和 agg_expr
+  std::vector<std::unique_ptr<Expression>> exprs_;
 };

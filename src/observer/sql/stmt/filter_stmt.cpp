@@ -21,48 +21,17 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
-FilterStmt::~FilterStmt()
-{
-  for (FilterUnit *unit : filter_units_) {
-    delete unit;
-  }
-  filter_units_.clear();
-}
-
 RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-    const ConditionSqlNode *conditions, int condition_num, FilterStmt *&stmt)
+    Expression *condition, FilterStmt *&stmt)
 {
   RC rc = RC::SUCCESS;
   stmt = nullptr;
-
-  FilterStmt *tmp_stmt = new FilterStmt();
-  for (int i = 0; i < condition_num; i++) {
-    FilterUnit *filter_unit = nullptr;
-    rc = create_filter_unit(db, default_table, tables, conditions[i], filter_unit);
-    if (rc != RC::SUCCESS) {
-      delete tmp_stmt;
-      LOG_WARN("failed to create filter unit. condition index=%d", i);
-      return rc;
-    }
-    tmp_stmt->filter_units_.push_back(filter_unit);
+  if (condition == nullptr) {
+    return rc;
   }
 
-  stmt = tmp_stmt;
-  return rc;
-}
-
-RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-    const ConditionSqlNode &condition, FilterUnit *&filter_unit)
-{
-  RC rc = RC::SUCCESS;
-
-  CompOp comp = condition.comp;
-  if (comp < EQUAL_TO || comp >= NO_OP) {
-    LOG_WARN("invalid compare operator : %d", comp);
-    return RC::INVALID_ARGUMENT;
-  }
-
-  auto check_field = [&db, &tables, &default_table](Expression *expr) {
+  auto check_condition_expr = [&db, &tables, &default_table](Expression *expr) {
+    // TODO 聚集函数会出现在 having condition 中
     if (expr->type() == ExprType::SYSFUNCTION) {
       SysFuncExpr* sysfunc_expr = static_cast<SysFuncExpr*>(expr);
       return sysfunc_expr->check_param_type_and_number();
@@ -76,39 +45,26 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     if (expr->type() == ExprType::SUBQUERY) {
       // 条件表达式里才有子查询
       SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr);
-      Stmt * select_stmt = nullptr;
-      if (RC rc = SelectStmt::create(db, *subquery_expr->get_sql_node(), select_stmt, *tables); RC::SUCCESS != rc) {
-        return rc;
-      }
-      if (select_stmt->type() != StmtType::SELECT) {
+      return subquery_expr->generate_select_stmt(db, *tables);
+    }
+    if (expr->type() == ExprType::COMPARISON) {
+      ComparisonExpr* cmp_expr = static_cast<ComparisonExpr*>(expr);
+      CompOp comp = cmp_expr->comp();
+      if (comp < EQUAL_TO || comp >= NO_OP) {
+        LOG_WARN("invalid compare operator : %d", comp);
         return RC::INVALID_ARGUMENT;
       }
-      SelectStmt* ss = static_cast<SelectStmt*>(select_stmt);
-      if (ss->projects().size() > 1) {
-        return RC::INVALID_ARGUMENT;
-      }
-      subquery_expr->set_select_stmt(static_cast<SelectStmt*>(select_stmt));
       return RC::SUCCESS;
     }
-    // TODO check comaparision expr 检查子查询的列数
     return RC::SUCCESS;
   };
-  if (rc = condition.left_expr->traverse_check(check_field); rc != RC::SUCCESS) {
-    LOG_WARN("filter_stmt check_field lhs expression error");
-    return rc;
-  }
-  if (rc = condition.right_expr->traverse_check(check_field); rc != RC::SUCCESS) {
-    LOG_WARN("filter_stmt check_field rhs expression error");
+  if (RC rc = condition->traverse_check(check_condition_expr); RC::SUCCESS != rc) {
     return rc;
   }
 
-  // everything alright
-  filter_unit = new FilterUnit;
-  filter_unit->set_left(std::unique_ptr<Expression>(condition.left_expr));
-  // condition.left_expr = nullptr;
-  filter_unit->set_right(std::unique_ptr<Expression>(condition.right_expr));
-  // condition.right_expr = nullptr;
-  filter_unit->set_comp(comp);
-  // 检查两个类型是否能够比较
+  FilterStmt *tmp_stmt = new FilterStmt();
+  tmp_stmt->condition_ = std::unique_ptr<Expression>(condition);
+
+  stmt = tmp_stmt;
   return rc;
 }
