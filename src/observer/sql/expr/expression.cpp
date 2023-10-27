@@ -880,6 +880,10 @@ RC SubQueryExpr::get_value(const Tuple &tuple, Value &value) const
   physical_oper_->set_parent_tuple(&tuple);
   // 每次返回一行的第一个 cell
   if (RC rc = physical_oper_->next(); RC::SUCCESS != rc) {
+    if (RC::RECORD_EOF == rc) {
+      value.set_null();
+      rc = RC::SUCCESS;
+    }
     return rc;
   }
   return physical_oper_->current_tuple()->cell_at(0, value);

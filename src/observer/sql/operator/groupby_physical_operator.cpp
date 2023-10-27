@@ -55,11 +55,13 @@ RC GroupByPhysicalOperator::next()
     rc = children_[0]->next();
     // maybe empty. count(x) -> 0
     if (RC::SUCCESS != rc) {
-      // if (RC::RECORD_EOF == rc) {
-      is_record_eof_ = true;
-      //   tuple_.do_aggregate_done();
-      //   return RC::SUCCESS;
-      // }
+      if (RC::RECORD_EOF == rc) {
+        is_record_eof_ = true;
+        if (groupby_fields_.empty()) {
+          tuple_.do_aggregate_done();
+          return RC::SUCCESS;
+        }
+      }
       return rc;
     }
     is_first_ = false;
