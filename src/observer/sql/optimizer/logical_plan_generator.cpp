@@ -223,6 +223,13 @@ RC LogicalPlanGenerator::create_plan(
       field_exprs.emplace_back(expr->deep_copy().release());
     }
 
+    if (!select_stmt->groupby_stmt()->get_groupby_fields().empty()) {
+      unique_ptr<LogicalOperator> orderby_oper(new OrderByLogicalOperator(std::move(order_units),std::move(field_exprs)));
+      if (top_oper) {
+        orderby_oper->add_child(std::move(top_oper));
+      }
+      top_oper = std::move(orderby_oper);
+    }
 
     unique_ptr<LogicalOperator> groupby_oper;
     rc = create_plan(select_stmt->groupby_stmt(), groupby_oper);
@@ -230,11 +237,6 @@ RC LogicalPlanGenerator::create_plan(
       LOG_WARN("failed to create groupby logical plan. rc=%s", strrc(rc));
       return rc;
     }
-    unique_ptr<LogicalOperator> orderby_oper(new OrderByLogicalOperator(std::move(order_units),std::move(field_exprs)));
-    if(top_oper){
-      orderby_oper->add_child(std::move(top_oper));
-    }
-    top_oper = std::move(orderby_oper);
     
     groupby_oper->add_child(std::move(top_oper));
     top_oper = std::move(groupby_oper);
