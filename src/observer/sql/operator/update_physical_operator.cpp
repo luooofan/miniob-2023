@@ -95,7 +95,7 @@ RC UpdatePhysicalOperator::find_target_columns()
         // ok
       } else if (raw_value.attr_type() != field_meta->type()) {
         if (TEXTS == field_meta->type() && CHARS == raw_value.attr_type()) {
-        } else {
+        } else if (const_cast<Value&>(raw_value).typecast(field_meta->type()) != RC::SUCCESS) {
           LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
                   table_->name(), fields_[c_idx].c_str(), field_meta->type(), raw_value.attr_type());
           // return RC::SCHEMA_FIELD_TYPE_MISMATCH;
