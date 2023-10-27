@@ -242,7 +242,15 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
     return RC::RECORD_EOF == rc ? RC::SUCCESS : rc;
   }
 
-  rc = left_->get_value(tuple, left_value);
+  auto get_value = [&tuple](const std::unique_ptr<Expression>& expr, Value& value) {
+    RC rc = expr->get_value(tuple, value);
+    if (expr->type() == ExprType::SUBQUERY && RC::RECORD_EOF == rc) {
+      value.set_null();
+      rc = RC::SUCCESS;
+    }
+    return rc;
+  };
+  rc = get_value(left_, left_value);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
     return rc;
@@ -272,7 +280,7 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
     return rc == RC::RECORD_EOF ? RC::SUCCESS : rc;
   }
 
-  rc = right_->get_value(tuple, right_value);
+  rc = get_value(right_, right_value);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
     return rc;
@@ -825,7 +833,7 @@ SubQueryExpr::SubQueryExpr(const SelectSqlNode& sql_node)
   
 SubQueryExpr::~SubQueryExpr() = default;
 
-RC SubQueryExpr::generate_select_stmt(Db* db, std::unordered_map<std::string, Table *> &tables)
+RC SubQueryExpr::generate_select_stmt(Db* db, const std::unordered_map<std::string, Table *> &tables)
 {
   Stmt * select_stmt = nullptr;
   if (RC rc = SelectStmt::create(db, *sql_node_.get(), select_stmt, tables); OB_FAIL(rc)) {
@@ -880,10 +888,6 @@ RC SubQueryExpr::get_value(const Tuple &tuple, Value &value) const
   physical_oper_->set_parent_tuple(&tuple);
   // 每次返回一行的第一个 cell
   if (RC rc = physical_oper_->next(); RC::SUCCESS != rc) {
-    if (RC::RECORD_EOF == rc) {
-      value.set_null();
-      rc = RC::SUCCESS;
-    }
     return rc;
   }
   return physical_oper_->current_tuple()->cell_at(0, value);
@@ -907,39 +911,4 @@ AttrType SubQueryExpr::value_type() const
 std::unique_ptr<Expression> SubQueryExpr::deep_copy() const 
 { 
   return {}; 
-}
-
-const std::unique_ptr<SelectSqlNode>& SubQueryExpr::get_sql_node() const
-{
-  return sql_node_;
-}
-
-void SubQueryExpr::set_select_stmt(SelectStmt* stmt)
-{
-  stmt_ = std::unique_ptr<SelectStmt>(stmt);
-}
-
-const std::unique_ptr<SelectStmt>& SubQueryExpr::get_select_stmt() const
-{
-  return stmt_;
-}
-
-void SubQueryExpr::set_logical_oper(std::unique_ptr<LogicalOperator>&& oper)
-{
-  logical_oper_ = std::move(oper);
-}
-
-const std::unique_ptr<LogicalOperator>& SubQueryExpr::get_logical_oper()
-{
-  return logical_oper_;
-}
-
-void SubQueryExpr::set_physical_oper(std::unique_ptr<PhysicalOperator>&& oper)
-{
-  physical_oper_ = std::move(oper);
-}
-
-const std::unique_ptr<PhysicalOperator>& SubQueryExpr::get_physical_oper()
-{
-  return physical_oper_;
 }

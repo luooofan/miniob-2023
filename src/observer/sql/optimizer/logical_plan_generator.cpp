@@ -450,11 +450,7 @@ RC LogicalPlanGenerator::create_plan(
   auto process_sub_query = [](std::unique_ptr<Expression>& expr) {
     if (expr->type() == ExprType::SUBQUERY) {
       SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr.get());
-      std::unique_ptr<LogicalOperator> sub_query_logi_oper;
-      if (RC rc = LogicalPlanGenerator::create_plan(sub_query_expr->get_select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
-        return rc;
-      }
-      sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
+      return sub_query_expr->generate_logical_oper();
     }
     return RC::SUCCESS;
   };

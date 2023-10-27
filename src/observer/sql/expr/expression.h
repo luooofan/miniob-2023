@@ -70,6 +70,7 @@ public:
   /**
    * @brief 根据具体的tuple，来计算当前表达式的值。tuple有可能是一个具体某个表的行数据
    */
+  // TODO 取消 const，有些表达式需要维护内部状态，比如 FieldExpr 维护 is_first
   virtual RC get_value(const Tuple &tuple, Value &value) const = 0;
 
   /**
@@ -763,16 +764,9 @@ public:
 
   std::unique_ptr<Expression> deep_copy() const;
 
-  RC generate_select_stmt(Db* db, std::unordered_map<std::string, Table *> &tables);
+  RC generate_select_stmt(Db* db, const std::unordered_map<std::string, Table *> &tables);
   RC generate_logical_oper();
   RC generate_physical_oper();
-  const std::unique_ptr<SelectSqlNode>& get_sql_node() const;
-  void set_select_stmt(SelectStmt* stmt);
-  const std::unique_ptr<SelectStmt>& get_select_stmt() const;
-  void set_logical_oper(std::unique_ptr<LogicalOperator>&& oper);
-  const std::unique_ptr<LogicalOperator>& get_logical_oper();
-  void set_physical_oper(std::unique_ptr<PhysicalOperator>&& oper);
-  const std::unique_ptr<PhysicalOperator>& get_physical_oper();
 
 private:
   std::unique_ptr<SelectSqlNode> sql_node_;

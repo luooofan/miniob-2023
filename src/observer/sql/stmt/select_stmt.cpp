@@ -337,21 +337,19 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     // 2. 语义检查 check:
     // - 聚集函数参数个数、参数为 * 的检查是在 syntax parser 完成
     // - 聚集函数中的字段 OK select clause 检查过了
-    // - 非聚集函数中的字段应该 必须在 group by 的字段中
+
     // - 没有 group by clause 时，不应该有非聚集函数中的字段
-    // 当前没有 group by，所以只 check 一下有没有不在聚集函数中的字段即可
     if (!field_exprs_not_aggr.empty() && select_sql.groupby_exprs.size() == 0) {
       LOG_WARN("No Group By. But Has Fields Not In Aggr Func");
       return RC::INVALID_ARGUMENT;
     }
-    //有 group by ，要判断select clause 中的 expr (除 agg_expr) 是否在 group by 后存在
-    //select min(c1), c2+c3 from t1 group by c2+c3;
-    //先提取select 后的非 aggexpr ，然后判断其是否是 groupby 中
-    if(select_sql.groupby_exprs.size() > 0)
-    {
-      // 1.先检查 field
+
+    // - 有 group by，要判断 select clause 和 having clause 中的 expr (除 agg_expr) 在一个 group 中只能有一个值
+    // e.g. select min(c1), c2+c3*c4 from t1 group by c2+c3, c4; YES
+    //      select min(c1), c2, c3+c4 from t1 group by c2+c3;    NO
+    if (select_sql.groupby_exprs.size() > 0) {
       // do check field
-      for (int i = 0 ; i < static_cast<int>(select_sql.groupby_exprs.size()) ; i++){
+      for (size_t i = 0 ; i < select_sql.groupby_exprs.size() ; i++) {
         Expression* expr = select_sql.groupby_exprs[i];
         if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
         LOG_WARN("project expr traverse check_field error!");
@@ -359,6 +357,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
         }
       }
 
+      // 先提取 select 后的非 aggexpr ，然后判断其是否是 groupby 中
       std::vector<Expression*> &groupby_exprs =  select_sql.groupby_exprs;
       auto check_expr_in_groupby_exprs = [&groupby_exprs](std::unique_ptr<Expression>& expr) {
         bool res = false;
