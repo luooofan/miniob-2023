@@ -72,7 +72,7 @@ enum CompOp
 
 struct OrderBySqlNode
 {
-  Expression * expr;
+  Expression * expr = nullptr;
   bool is_asc;// true 为升序
 };
 
@@ -100,10 +100,10 @@ struct SelectSqlNode
 {
   std::vector<Expression *>       project_exprs; ///< attributes in select clause
   std::vector<InnerJoinSqlNode>   relations;///< 查询的表
-  Expression *       conditions;    ///< 查询条件
+  Expression *       conditions = nullptr;    ///< 查询条件
   std::vector<OrderBySqlNode>     orderbys; ///< attributes in order clause
   std::vector<Expression *>       groupby_exprs;  ///< groupby 
-  Expression *       having_conditions;  ///< groupby having
+  Expression *       having_conditions = nullptr;  ///< groupby having
 };
 
 /**
@@ -136,7 +136,7 @@ struct InsertSqlNode
 struct DeleteSqlNode
 {
   std::string    relation_name;  ///< Relation to delete from
-  Expression*    conditions;
+  Expression*    conditions = nullptr;
 };
 
 /**
@@ -146,14 +146,14 @@ struct DeleteSqlNode
 struct UpdateKV
 {
   std::string attr_name;
-  Expression* value;
+  Expression* value = nullptr;
 };
 struct UpdateSqlNode
 {
   std::string                   relation_name;         ///< Relation to update
   std::vector<std::string>      attribute_names;       ///< 更新的字段，仅支持多个字段
   std::vector<Expression*>      values;                ///< 更新的值，仅支持多个字段
-  Expression*                   conditions;
+  Expression*                   conditions = nullptr;
 };
 
 /**
