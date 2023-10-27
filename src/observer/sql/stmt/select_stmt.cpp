@@ -349,38 +349,35 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     //      select min(c1), c2, c3+c4 from t1 group by c2+c3;    NO
     if (select_sql.groupby_exprs.size() > 0) {
       // do check field
-      for (size_t i = 0 ; i < select_sql.groupby_exprs.size() ; i++) {
+      for (size_t i = 0; i < select_sql.groupby_exprs.size(); i++) {
         Expression* expr = select_sql.groupby_exprs[i];
         if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
-        LOG_WARN("project expr traverse check_field error!");
-        return rc;
+          LOG_WARN("project expr traverse check_field error!");
+          return rc;
         }
       }
 
       // 先提取 select 后的非 aggexpr ，然后判断其是否是 groupby 中
       std::vector<Expression*> &groupby_exprs =  select_sql.groupby_exprs;
       auto check_expr_in_groupby_exprs = [&groupby_exprs](std::unique_ptr<Expression>& expr) {
-        bool res = false;
-        for(auto tmp:groupby_exprs)
-        {
+        for(auto tmp : groupby_exprs) {
           if(expr->name() == tmp->name()) //通过表达式的名称进行判断
             return true;
         }
         return false;
       };
 
-      for (auto& project : projects)
-      {
-        if(project->type() != ExprType::AGGRFUNCTION)
-        {
-          if(!check_expr_in_groupby_exprs(project))
-          {
+      // TODO 没有检查 having 和 order by 子句中的表达式
+      for (auto& project : projects) {
+        if(project->type() != ExprType::AGGRFUNCTION) {
+          if(!check_expr_in_groupby_exprs(project)) {
             LOG_WARN("expr not in groupby_exprs");
             return RC::INVALID_ARGUMENT;
           }
         }
       }
     }
+
     // 3. create groupby stmt
     rc = GroupByStmt::create(db,
         default_table,
@@ -394,15 +391,16 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       return rc;
     }
     select_sql.groupby_exprs.clear();
-    // 4.在物理计划生成阶段向 groupby_operator 下挂一个 orderby_operator
+    // 4. 在物理计划生成阶段向 groupby_operator 下挂一个 orderby_operator
   }
 
   OrderByStmt *orderby_stmt = nullptr; // TODO release memory when failed
-  // 4. create orderby stmt
-  // - 先提取select clause 后的 field_expr(非agg_expr中的)，和agg_expr，这里提取时已经不需要再进行 check 了，因为在 select clause
+  // create orderby stmt
+  // 因为我们 order by 的实现要拷贝所有需要的数据 所以还是要提取 TODO 这里可能会重复 但是先不考虑
+  // - 先提取 select clause 后的 field_expr(非agg_expr中的)，和 agg_expr，这里提取时已经不需要再进行 check 了，因为在 select clause
   // - order by 后的 expr 进行 check field
   if(select_sql.orderbys.size() > 0) {
-    // 1. 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
+    // 提取 AggrFuncExpr 以及不在 AggrFuncExpr 中的 FieldExpr
     std::vector<std::unique_ptr<Expression>> expr_for_orderby;
     // 用于从 project exprs 中提取所有 aggr func exprs. e.g. min(c1 + 1) + 1
     auto collect_aggr_exprs = [&expr_for_orderby](Expression * expr) {
@@ -421,8 +419,9 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       project->traverse(collect_aggr_exprs);
       project->traverse(collect_field_exprs, [](const Expression* expr) { return expr->type() != ExprType::AGGRFUNCTION; });
     }
+    // TODO 检查应该放到 create 里面去检查
     // do check field
-    for (int i = 0 ; i < static_cast<int>(select_sql.orderbys.size()) ; i++){
+    for (size_t i = 0 ; i < select_sql.orderbys.size() ; i++){
       Expression* expr = select_sql.orderbys[i].expr;
       if (rc = expr->traverse_check(check_project_expr); rc != RC::SUCCESS) {
       LOG_WARN("project expr traverse check_field error!");
