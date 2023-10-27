@@ -110,6 +110,7 @@ AggrFuncType get_aggr_func_type(char *func_name)
         FROM
         WHERE
         AND
+        OR
         SET
         ON
         LOAD
@@ -149,7 +150,6 @@ AggrFuncType get_aggr_func_type(char *func_name)
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
   ParsedSqlNode *                   sql_node;
-  ConditionSqlNode *                condition;
   Value *                           value;
   enum CompOp                       comp;
   RelAttrSqlNode *                  rel_attr;
@@ -162,7 +162,6 @@ AggrFuncType get_aggr_func_type(char *func_name)
   std::vector<Value> *              value_list;
   std::vector<std::string> *        relation_list;
   std::vector<std::vector<Value>> * insert_value_list;
-  std::vector<ConditionSqlNode> *   condition_list;
   std::vector<RelAttrSqlNode> *     rel_attr_list;
   InnerJoinSqlNode *                inner_joins;
   std::vector<InnerJoinSqlNode> *   inner_joins_list;
@@ -187,7 +186,7 @@ AggrFuncType get_aggr_func_type(char *func_name)
 %type <inner_joins>         from_node
 %type <inner_joins_list>    from_list
 %type <number>              type
-%type <condition>           condition
+%type <expression>          condition
 %type <value>               value
 %type <number>              number
 %type <boolean>             is_null_comp
@@ -204,8 +203,7 @@ AggrFuncType get_aggr_func_type(char *func_name)
 %type <value_list>          value_list
 %type <value_list>          insert_value
 %type <insert_value_list>   insert_value_list
-%type <condition_list>      where
-%type <condition_list>      condition_list
+%type <expression>          where
 %type <expression>          expression
 %type <expression>          sub_query_expr
 %type <expression>          aggr_func_expr
@@ -215,7 +213,7 @@ AggrFuncType get_aggr_func_type(char *func_name)
 %type <orderby_unit_list>   sort_list
 %type <orderby_unit_list>   opt_order_by
 %type <expression_list>     opt_group_by
-%type <condition_list>      opt_having
+%type <expression>          opt_having
 %type <expression_list>     expression_list
 %type <update_kv_list>      update_kv_list
 %type <update_kv>           update_kv
@@ -244,6 +242,9 @@ AggrFuncType get_aggr_func_type(char *func_name)
 // commands should be a list but I use a single command instead
 %type <sql_node>            commands
 
+%left OR
+%left AND
+%left EQ LT GT LE GE NE
 %left '+' '-'
 %left '*' '/'
 %nonassoc UMINUS
@@ -651,9 +652,9 @@ delete_stmt:    /*  delete 语句的语法解析树*/
     {
       $$ = new ParsedSqlNode(SCF_DELETE);
       $$->deletion.relation_name = $3;
+      $$->deletion.conditions = nullptr;
       if ($4 != nullptr) {
-        $$->deletion.conditions.swap(*$4);
-        delete $4;
+        $$->deletion.conditions = $4;
       }
       free($3);
     }
@@ -672,10 +673,9 @@ update_stmt:      /*  update 语句的语法解析树*/
         }
         delete $5;
       }
-  
+      $$->update.conditions = nullptr;
       if ($6 != nullptr) {
-        $$->update.conditions.swap(*$6);
-        delete $6;
+        $$->update.conditions = $6;
       }
       free($2);
       delete $4;
@@ -754,7 +754,7 @@ join_list:
     /* empty */ {
       $$ = nullptr;
     }
-    | INNER JOIN ID alias ON condition_list join_list {
+    | INNER JOIN ID alias ON condition join_list {
       if (nullptr != $7) {
         $$ = $7;
       } else {
@@ -765,8 +765,7 @@ join_list:
         temp = $4;
       }
       $$->join_relations.emplace_back($3, temp);
-      $$->conditions.emplace_back(*$6);
-      delete $6;
+      $$->conditions.emplace_back($6);
       free($3);
       free($4);
     }
@@ -785,6 +784,7 @@ select_stmt:        /*  select 语句的语法解析树*/
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
+        std::reverse($2->begin(), $2->end());
         $$->selection.project_exprs.swap(*$2);
         delete $2;
       }
@@ -793,6 +793,7 @@ select_stmt:        /*  select 语句的语法解析树*/
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
+        std::reverse($2->begin(), $2->end());
         $$->selection.project_exprs.swap(*$2);
         delete $2;
       }
@@ -803,18 +804,18 @@ select_stmt:        /*  select 语句的语法解析树*/
       $$->selection.relations.push_back(*$4);
       std::reverse($$->selection.relations.begin(), $$->selection.relations.end());
 
+      $$->selection.conditions = nullptr;
       if ($6 != nullptr) {
-        $$->selection.conditions.swap(*$6);
-        delete $6;
+        $$->selection.conditions = $6;
       }
       if ($7 != nullptr) {
         $$->selection.groupby_exprs.swap(*$7);
         delete $7;
         std::reverse($$->selection.groupby_exprs.begin(), $$->selection.groupby_exprs.end());
       }
+      $$->selection.having_conditions = nullptr;
       if ($8 != nullptr) {
-        $$->selection.having_conditions.swap(*$8);
-        delete $8;
+        $$->selection.having_conditions = $8;
       }
 
       if ($9 != nullptr) {
@@ -894,13 +895,13 @@ expression:
       delete $1;
     }
     | aggr_func_expr {
-      $$ = $1;
+      $$ = $1; // AggrFuncExpr
     }
     | func_expr {
-      $$ = $1;
+      $$ = $1; // SysFuncExpr
     }
     | sub_query_expr {
-      $$ = $1;
+      $$ = $1; // SubQueryExpr
     }
     ;
 
@@ -982,20 +983,8 @@ where:
     {
       $$ = nullptr;
     }
-    | WHERE condition_list {
+    | WHERE condition {
       $$ = $2;  
-    }
-    ;
-condition_list:
-    condition {
-      $$ = new std::vector<ConditionSqlNode>;
-      $$->emplace_back(*$1);
-      delete $1;
-    }
-    | condition AND condition_list {
-      $$ = $3;
-      $$->emplace_back(*$1);
-      delete $1;
     }
     ;
 
@@ -1013,32 +1002,29 @@ is_null_comp:
 condition:
     expression comp_op expression
     {
-      $$ = new ConditionSqlNode;
-      $$->left_expr = $1;
-      $$->right_expr = $3;
-      $$->comp = $2;
+      $$ = new ComparisonExpr($2, $1, $3);
     }
     | expression is_null_comp
     {
-      $$ = new ConditionSqlNode;
-      $$->left_expr = $1;
-      $$->comp = $2 ? IS_NULL : IS_NOT_NULL;
-      ValueExpr *value_expr = new ValueExpr();
       Value val;
       val.set_null();
-      value_expr->set_value(val);
-      $$->right_expr = value_expr;
+      ValueExpr *value_expr = new ValueExpr(val);
+      $$ = new ComparisonExpr($2 ? IS_NULL : IS_NOT_NULL, $1, value_expr);
     }
     | exists_op expression
     {
-      $$ = new ConditionSqlNode;
-      ValueExpr *value_expr = new ValueExpr();
       Value val;
       val.set_null();
-      value_expr->set_value(val);
-      $$->left_expr = value_expr;
-      $$->right_expr = $2;
-      $$->comp = $1;
+      ValueExpr *value_expr = new ValueExpr(val);
+      $$ = new ComparisonExpr($1, value_expr, $2);
+    }
+    | condition AND condition
+    {
+      $$ = new ConjunctionExpr(ConjunctionExpr::Type::AND, $1, $3);
+    }
+    | condition OR condition
+    {
+      $$ = new ConjunctionExpr(ConjunctionExpr::Type::OR, $1, $3);
     }
     ;
 
@@ -1103,11 +1089,12 @@ opt_having:
   /* empty */ {
    $$ = nullptr;
   }
-	| HAVING condition_list
+	| HAVING condition
 	{
       $$ = $2;
 	}
 	;
+
 comp_op:
       EQ { $$ = EQUAL_TO; }
     | LT { $$ = LESS_THAN; }

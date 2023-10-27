@@ -125,7 +125,7 @@ RC LogicalPlanGenerator::create_plan(
   const std::vector<SelectStmt::JoinTables> &tables = select_stmt->join_tables();
   // const std::vector<Field> &all_fields = select_stmt->query_fields();
 
-  auto process_one_table = [this/*, &all_fields*/](unique_ptr<LogicalOperator>& prev_oper, Table* table, FilterStmt* fu) {
+  auto process_one_table = [/*, &all_fields*/](unique_ptr<LogicalOperator>& prev_oper, Table* table, FilterStmt* fu) {
     std::vector<Field> fields; // TODO(wbj) 现在没用这个
     // for (const Field &field : all_fields) {
     //   if (0 == strcmp(field.table_name(), table->name())) {
@@ -135,7 +135,7 @@ RC LogicalPlanGenerator::create_plan(
     unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, fields, true/*readonly*/));
     unique_ptr<LogicalOperator> predicate_oper;
     if (nullptr != fu) {
-      if (RC rc = create_plan(fu, predicate_oper); rc != RC::SUCCESS) {
+      if (RC rc = LogicalPlanGenerator::create_plan(fu, predicate_oper); rc != RC::SUCCESS) {
         LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
         return rc;
       }
@@ -186,7 +186,7 @@ RC LogicalPlanGenerator::create_plan(
   ASSERT(outside_prev_oper, "ERROR!"); // TODO(wbj) Why doesn't work?
   unique_ptr<LogicalOperator> top_oper = std::move(outside_prev_oper); // maybe null
 
-  if (select_stmt->filter_stmt()) {
+  if (select_stmt->filter_stmt() != nullptr) {
     unique_ptr<LogicalOperator> predicate_oper;
     rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
     if (rc != RC::SUCCESS) {
@@ -249,7 +249,7 @@ RC LogicalPlanGenerator::create_plan(
     // }
   }
 
-  if (select_stmt->having_stmt()) {
+  if (select_stmt->having_stmt() != nullptr) {
     unique_ptr<LogicalOperator> predicate_oper;
     rc = create_plan(select_stmt->having_stmt(), predicate_oper);
     if (rc != RC::SUCCESS) {
@@ -303,29 +303,22 @@ unique_ptr<PredicateLogicalOperator> cmp_exprs2predicate_logic_oper(std::vector<
 RC LogicalPlanGenerator::create_plan(
     FilterStmt *filter_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
+  if (filter_stmt == nullptr || filter_stmt->condition() == nullptr) {
+    return {};
+  }
   std::vector<unique_ptr<Expression>> cmp_exprs;
-  const std::vector<FilterUnit *> &filter_units = filter_stmt->filter_units();
-  auto process_sub_query = [this](std::unique_ptr<Expression>& expr) {
+  // 给子查询生成 logical oper
+  auto process_sub_query = [](Expression* expr) {
     if (expr->type() == ExprType::SUBQUERY) {
-      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr.get());
-      std::unique_ptr<LogicalOperator> sub_query_logi_oper;
-      if (RC rc = create_plan(sub_query_expr->get_select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
-        return rc;
-      }
-      sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
+      return sub_query_expr->generate_logical_oper();
     }
     return RC::SUCCESS;
   };
-  for (FilterUnit *filter_unit : filter_units) {
-    if (RC rc = process_sub_query(filter_unit->left()); RC::SUCCESS != rc) {
-      return rc;
-    } else if (rc = process_sub_query(filter_unit->right()); RC::SUCCESS != rc) {
-      return rc;
-    }
-    ComparisonExpr *cmp_expr = new ComparisonExpr(filter_unit->comp(),  std::move(filter_unit->left()), std::move(filter_unit->right()));
-    cmp_exprs.emplace_back(cmp_expr);
+  if (RC rc = filter_stmt->condition()->traverse_check(process_sub_query); OB_FAIL(rc)) {
+    return rc;
   }
-
+  cmp_exprs.emplace_back(std::move(filter_stmt->condition()));
   logical_operator = cmp_exprs2predicate_logic_oper(std::move(cmp_exprs));
   return RC::SUCCESS;
 }
@@ -454,11 +447,11 @@ RC LogicalPlanGenerator::create_plan(
       return rc;
     }
   }
-  auto process_sub_query = [this](std::unique_ptr<Expression>& expr) {
+  auto process_sub_query = [](std::unique_ptr<Expression>& expr) {
     if (expr->type() == ExprType::SUBQUERY) {
       SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr.get());
       std::unique_ptr<LogicalOperator> sub_query_logi_oper;
-      if (RC rc = create_plan(sub_query_expr->get_select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
+      if (RC rc = LogicalPlanGenerator::create_plan(sub_query_expr->get_select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
         return rc;
       }
       sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));

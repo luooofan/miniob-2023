@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include <unordered_set>
 #include <vector>
 #include <memory>
 
@@ -72,7 +73,7 @@ public:
 public:
   // select_sql.project exprs would be clear
   static RC create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
-    std::unordered_map<std::string, Table *> parent_table_map = {});
+    const std::unordered_map<std::string, Table *> &parent_table_map = {});
 
 public:
   const std::vector<JoinTables> &join_tables() const
@@ -100,10 +101,16 @@ public:
     return projects_;
   }
 private:
+  static RC process_from_clause(Db *db, std::vector<Table *> &tables,
+    std::unordered_map<std::string, std::string> &table_alias_map,
+    std::unordered_map<std::string, Table *> &table_map,
+    std::vector<InnerJoinSqlNode> &from_relations,
+    std::vector<JoinTables> &join_tables);
+private:
   std::vector<std::unique_ptr<Expression>> projects_;
   std::vector<JoinTables> join_tables_;
   FilterStmt *filter_stmt_ = nullptr;
-  GroupByStmt * groupby_stmt_ = nullptr;
-  OrderByStmt * orderby_stmt_ = nullptr;
-  FilterStmt * having_stmt_ = nullptr;
+  GroupByStmt *groupby_stmt_ = nullptr;
+  OrderByStmt *orderby_stmt_ = nullptr;
+  FilterStmt *having_stmt_ = nullptr;
 };

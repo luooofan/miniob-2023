@@ -22,6 +22,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/select_stmt.h"
 #include "sql/operator/logical_operator.h"
 #include "sql/operator/physical_operator.h"
+#include "sql/optimizer/logical_plan_generator.h"
+#include "sql/optimizer/physical_plan_generator.h"
 
 using namespace std;
 
@@ -121,6 +123,10 @@ static bool str_like(const Value &left, const Value &right)
 
 ComparisonExpr::ComparisonExpr(CompOp comp, unique_ptr<Expression> left, unique_ptr<Expression> right)
     : comp_(comp), left_(std::move(left)), right_(std::move(right))
+{}
+
+ComparisonExpr::ComparisonExpr(CompOp comp, Expression* left, Expression* right)
+    : comp_(comp), left_(left), right_(right)
 {}
 
 ComparisonExpr::~ComparisonExpr()
@@ -288,6 +294,13 @@ ConjunctionExpr::ConjunctionExpr(Type type, vector<unique_ptr<Expression>> child
     : conjunction_type_(type), children_(std::move(children))
 {}
 
+ConjunctionExpr::ConjunctionExpr(Type type, Expression* left, Expression* right)
+    : conjunction_type_(type)
+{
+  children_.emplace_back(left);
+  children_.emplace_back(right);
+}
+
 RC ConjunctionExpr::get_value(const Tuple &tuple, Value &value) const
 {
   RC rc = RC::SUCCESS;
@@ -297,7 +310,7 @@ RC ConjunctionExpr::get_value(const Tuple &tuple, Value &value) const
   }
 
   Value tmp_value;
-  for (const unique_ptr<Expression> &expr : children_) {//多个条件以 AND 连接
+  for (const unique_ptr<Expression> &expr : children_) {
     rc = expr->get_value(tuple, tmp_value);//这边会进行表达式的计算
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to get value by child expression. rc=%s", strrc(rc));
@@ -812,6 +825,34 @@ SubQueryExpr::SubQueryExpr(const SelectSqlNode& sql_node)
   
 SubQueryExpr::~SubQueryExpr() = default;
 
+RC SubQueryExpr::generate_select_stmt(Db* db, std::unordered_map<std::string, Table *> &tables)
+{
+  Stmt * select_stmt = nullptr;
+  if (RC rc = SelectStmt::create(db, *sql_node_.get(), select_stmt, tables); OB_FAIL(rc)) {
+    return rc;
+  }
+  if (select_stmt->type() != StmtType::SELECT) {
+    return RC::INVALID_ARGUMENT;
+  }
+  SelectStmt* ss = static_cast<SelectStmt*>(select_stmt);
+  if (ss->projects().size() > 1) {
+    return RC::INVALID_ARGUMENT;
+  }
+  stmt_ = std::unique_ptr<SelectStmt>(ss);
+  return RC::SUCCESS;
+}
+RC SubQueryExpr::generate_logical_oper()
+{
+  if (RC rc = LogicalPlanGenerator::create(stmt_.get(), logical_oper_); OB_FAIL(rc)) {
+    LOG_WARN("subquery stmt generate failed. return %s", strrc(rc));
+    return rc;
+  }
+  return RC::SUCCESS;
+}
+RC SubQueryExpr::generate_physical_oper()
+{
+  return RC::SUCCESS;
+}
 // 子算子树的 open 和 close 逻辑由外部控制
 RC SubQueryExpr::open(Trx* trx)
 {

@@ -299,6 +299,7 @@ private:
 class ComparisonExpr : public Expression 
 {
 public:
+  ComparisonExpr(CompOp comp, Expression* left, Expression* right);
   ComparisonExpr(CompOp comp, std::unique_ptr<Expression> left, std::unique_ptr<Expression> right);
   virtual ~ComparisonExpr();
 
@@ -389,6 +390,7 @@ public:
   };
 
 public:
+  ConjunctionExpr(Type type, Expression* left, Expression* right);
   ConjunctionExpr(Type type, std::vector<std::unique_ptr<Expression>> children);
   virtual ~ConjunctionExpr() = default;
 
@@ -761,6 +763,9 @@ public:
 
   std::unique_ptr<Expression> deep_copy() const;
 
+  RC generate_select_stmt(Db* db, std::unordered_map<std::string, Table *> &tables);
+  RC generate_logical_oper();
+  RC generate_physical_oper();
   const std::unique_ptr<SelectSqlNode>& get_sql_node() const;
   void set_select_stmt(SelectStmt* stmt);
   const std::unique_ptr<SelectStmt>& get_select_stmt() const;
