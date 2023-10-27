@@ -844,13 +844,17 @@ RC SubQueryExpr::generate_select_stmt(Db* db, std::unordered_map<std::string, Ta
 RC SubQueryExpr::generate_logical_oper()
 {
   if (RC rc = LogicalPlanGenerator::create(stmt_.get(), logical_oper_); OB_FAIL(rc)) {
-    LOG_WARN("subquery stmt generate failed. return %s", strrc(rc));
+    LOG_WARN("subquery logical oper generate failed. return %s", strrc(rc));
     return rc;
   }
   return RC::SUCCESS;
 }
 RC SubQueryExpr::generate_physical_oper()
 {
+  if (RC rc = PhysicalPlanGenerator::create(*logical_oper_, physical_oper_); OB_FAIL(rc)) {
+    LOG_WARN("subquery physical oper generate failed. return %s", strrc(rc));
+    return rc;
+  }
   return RC::SUCCESS;
 }
 // 子算子树的 open 和 close 逻辑由外部控制

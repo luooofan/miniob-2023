@@ -114,14 +114,10 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
   Index *index = nullptr;
   ValueExpr *value_expr = nullptr;
 
-  auto process_subquery = [this](Expression* expr) {
+  auto process_subquery = [](Expression* expr) {
     if (expr->type() == ExprType::SUBQUERY) {
       SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
-      std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
-      if (RC rc = create(*sub_query_expr->get_logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
-        return rc;
-      }
-      sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
+      sub_query_expr->generate_physical_oper();
     }
     return RC::SUCCESS;
   };
@@ -207,14 +203,10 @@ RC PhysicalPlanGenerator::create_plan(PredicateLogicalOperator &pred_oper, uniqu
   ASSERT(expressions.size() == 1, "predicate logical operator's children should be 1");
 
   unique_ptr<Expression> expression = std::move(expressions.front());
-  rc = expression->traverse_check([this](Expression* expr) {
+  rc = expression->traverse_check([](Expression* expr) {
     if (expr->type() == ExprType::SUBQUERY) {
       SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
-      std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
-      if (RC rc = create(*sub_query_expr->get_logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
-        return rc;
-      }
-      sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
+      return sub_query_expr->generate_physical_oper();
     }
     return RC::SUCCESS;
   });
@@ -418,14 +410,10 @@ RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &update_oper, unique
   }
 
   for (auto& value : update_oper.values()) {
-    rc = value->traverse_check([this](Expression* expr) {
+    rc = value->traverse_check([](Expression* expr) {
       if (expr->type() == ExprType::SUBQUERY) {
         SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr);
-        std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
-        if (RC rc = create(*sub_query_expr->get_logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
-          return rc;
-        }
-        sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
+        sub_query_expr->generate_physical_oper();
       }
       return RC::SUCCESS;
     });
