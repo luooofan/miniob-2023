@@ -369,12 +369,29 @@ RC LogicalPlanGenerator::create_plan(
   RC rc = RC::SUCCESS;
   if(filter_stmt != nullptr)
   {
-      RC rc = create_plan(filter_stmt, predicate_oper);
-      if (rc != RC::SUCCESS) {
+    RC rc = create_plan(filter_stmt, predicate_oper);
+    if (rc != RC::SUCCESS) {
+      return rc;
+    }
+  }
+  auto process_sub_query = [this](std::unique_ptr<Expression>& expr) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* sub_query_expr = static_cast<SubQueryExpr*>(expr.get());
+      std::unique_ptr<LogicalOperator> sub_query_logi_oper;
+      if (RC rc = create_plan(sub_query_expr->get_select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
         return rc;
       }
+      sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
+    }
+    return RC::SUCCESS;
+  };
+  for (auto& value : update_stmt->values()) {
+    rc = process_sub_query(value);
+    if (RC::SUCCESS != rc) {
+      return rc;
+    }
   }
-  unique_ptr<LogicalOperator> update_oper(new UpdateLogicalOperator(table, update_stmt->values(), update_stmt->update_fields()));
+  unique_ptr<LogicalOperator> update_oper(new UpdateLogicalOperator(table, std::move(update_stmt->values()), update_stmt->update_fields()));
 
   if (predicate_oper) {
     predicate_oper->add_child(std::move(table_get_oper));

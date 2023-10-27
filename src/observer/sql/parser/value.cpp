@@ -300,10 +300,10 @@ int Value::get_int() const
       return num_value_.int_value_;
     }
     case FLOATS: {
-      return (int)(num_value_.float_value_);
+      return (int)(num_value_.float_value_ + 0.5);
     }
     case DOUBLES: {
-      return (int)(num_value_.double_value_);
+      return (int)(num_value_.double_value_ + 0.5);
     }
     case BOOLEANS: {
       return (int)(num_value_.bool_value_);

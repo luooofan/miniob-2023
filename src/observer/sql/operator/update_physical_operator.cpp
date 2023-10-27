@@ -12,6 +12,7 @@ See the Mulan PSL v2 for more details. */
 // Created by niuxn on 2022/6/27.
 //
 
+#include "common/lang/defer.h"
 #include "common/log/log.h"
 #include "sql/operator/update_physical_operator.h"
 #include "storage/record/record.h"
@@ -24,6 +25,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
   if (children_.empty()) {
     return RC::SUCCESS;
   }
+  invalid_ = false;
 
   std::unique_ptr<PhysicalOperator> &child = children_[0];
   RC rc = child->open(trx);
@@ -45,8 +47,11 @@ RC UpdatePhysicalOperator::open(Trx *trx)
 
 RC UpdatePhysicalOperator::find_target_columns()
 {
+  // 如果字段检查失败 并不停止执行 只是打个标志 因为如果更新 0 行必然返回成功
+  RC rc = RC::SUCCESS;
   const int sys_field_num  = table_->table_meta().sys_field_num();
   const int user_field_num = table_->table_meta().field_num() - sys_field_num;
+  EmptyTuple tp;
 
   for (size_t c_idx = 0; c_idx < fields_.size(); c_idx++) {
     std::string &attr_name = fields_[c_idx];
@@ -58,27 +63,55 @@ RC UpdatePhysicalOperator::find_target_columns()
       if (0 != strcmp(field_name, attr_name.c_str())) {
         continue;
       }
+      std::unique_ptr<Expression>& expr = values_[c_idx];
 
+      Value raw_value;
+      if (expr->type() == ExprType::SUBQUERY) {
+        SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(expr.get());
+        if (rc = subquery_expr->open(nullptr); RC::SUCCESS != rc) { // 暂时先 nullptr
+          return rc;
+        }
+        rc = subquery_expr->get_value(tp, raw_value);
+        if (RC::RECORD_EOF == rc) {
+          // 子查询为空集时设置 null
+          raw_value.set_null();
+          rc = RC::SUCCESS;
+        } else if (RC::SUCCESS != rc) {
+          return rc;
+        } else if (subquery_expr->has_more_row(tp)) {
+          // 子查询为多行 打个标志 直接跳过后续检查
+          invalid_ = true;
+          break;
+        }
+        subquery_expr->close();
+      } else {
+        if (rc = expr->get_value(tp, raw_value); RC::SUCCESS != rc) {
+          return rc;
+        }
+      }
+      // 拿到 Raw Value
       // 判断 类型是否符合要求
-      Value *value = values_[c_idx];
-      if (value->is_null() && field_meta->nullable()) {
+      if (raw_value.is_null() && field_meta->nullable()) {
         // ok
-      } else if (value->attr_type() != field_meta->type()) {
-        if (TEXTS == field_meta->type() && CHARS == value->attr_type()) {
-
-        } else {
+      } else if (raw_value.attr_type() != field_meta->type()) {
+        if (TEXTS == field_meta->type() && CHARS == raw_value.attr_type()) {
+        } else if (const_cast<Value&>(raw_value).typecast(field_meta->type()) != RC::SUCCESS) {
           LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
-                  table_->name(), fields_[c_idx].c_str(), field_meta->type(), value->attr_type());
-          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+                  table_->name(), fields_[c_idx].c_str(), field_meta->type(), raw_value.attr_type());
+          // return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+          invalid_ = true;
         }
       }
 
-      fields_id_.emplace_back(i + sys_field_num);
-      fields_meta_.emplace_back(*field_meta);
+      if (!invalid_) {
+        raw_values_.emplace_back(raw_value);
+        fields_id_.emplace_back(i + sys_field_num);
+        fields_meta_.emplace_back(*field_meta);
+      }
       break;
     }
   }
-  
+
   return RC::SUCCESS;
 }
 
@@ -91,6 +124,10 @@ RC UpdatePhysicalOperator::next()
 
   PhysicalOperator *child = children_[0].get();
   while (RC::SUCCESS == (rc = child->next())) {
+    if (invalid_) { // 子查询结果为多行
+      return RC::INVALID_ARGUMENT;
+    }
+
     Tuple *tuple = child->current_tuple();
     if (nullptr == tuple) {
       LOG_WARN("failed to get current record: %s", strrc(rc));
@@ -154,7 +191,7 @@ RC UpdatePhysicalOperator::construct_new_record(Record &old_record, Record &new_
 
   std::vector<Value> old_value;
   for (size_t c_idx = 0; c_idx < fields_.size(); c_idx++) {
-    Value *value = values_[c_idx];
+    Value *value = &raw_values_[c_idx];
     FieldMeta &field_meta = fields_meta_[c_idx];
 
     // 判断 新值与旧值是否相等，缓存旧值，将新值复制到新的record里
