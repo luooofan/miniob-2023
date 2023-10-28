@@ -159,7 +159,7 @@ public:
     bitmap_.init(record->data() + null_field->offset(), this->speces_.size());
   }
 
-  void set_schema(const Table *table)
+  void set_schema(const Table *table, const std::string& alias = "")
   {
     ASSERT(nullptr != table, "RowTuple set_schema with a null table");
     table_ = static_cast<BaseTable*>(const_cast<Table*>(table));
@@ -169,6 +169,7 @@ public:
     for (const FieldMeta &field : *fields) {
       speces_.push_back(new FieldExpr(table_, &field));
     }
+    alias_ = alias;
   }
 
   void set_schema(const View *view)
@@ -246,6 +247,14 @@ public:
       return RC::NOTFOUND;
     }
 
+    const std::string alias(spec.alias());
+    if (alias.find('.') != std::string::npos && alias != std::string(table_name) + "." + std::string(field_name)) {
+      // 说明这张表有别名
+      if (alias.substr(0, alias.find('.')) != alias_) {
+        return RC::NOTFOUND;
+      }
+    }
+
     for (size_t i = 0; i < speces_.size(); ++i) {
       const FieldExpr *field_expr = speces_[i];
       const Field &field = field_expr->field();
@@ -306,6 +315,7 @@ private:
   Record *record_ = nullptr;
   common::Bitmap bitmap_;
   const BaseTable *table_ = nullptr;
+  std::string alias_ = "";
   std::vector<FieldExpr *> speces_;
   
   // 记录来自不同表的Record的RID

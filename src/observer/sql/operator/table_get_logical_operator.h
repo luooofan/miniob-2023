@@ -24,7 +24,7 @@ See the Mulan PSL v2 for more details. */
 class TableGetLogicalOperator : public LogicalOperator
 {
 public:
-  TableGetLogicalOperator(Table *table, const std::vector<Field> &fields, bool readonly);
+  TableGetLogicalOperator(Table *table, const std::vector<Field> &fields, bool readonly, const std::string& alias = "");
   virtual ~TableGetLogicalOperator() = default;
 
   LogicalOperatorType type() const override
@@ -40,6 +40,10 @@ public:
   {
     return predicates_;
   }
+  const std::string& alias() const
+  {
+    return alias_;
+  }
 
 private:
   Table *table_ = nullptr;
@@ -51,4 +55,5 @@ private:
   // 不包含复杂的表达式运算，比如加减乘除、或者conjunction expression
   // 如果有多个表达式，他们的关系都是 AND
   std::vector<std::unique_ptr<Expression>> predicates_;
+  std::string alias_ = "";
 };

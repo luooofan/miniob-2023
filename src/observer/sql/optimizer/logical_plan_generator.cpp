@@ -126,7 +126,7 @@ RC LogicalPlanGenerator::create_plan(
   const std::vector<SelectStmt::JoinTables> &tables = select_stmt->join_tables();
   // const std::vector<Field> &all_fields = select_stmt->query_fields();
 
-  auto process_one_table = [/*, &all_fields*/](unique_ptr<LogicalOperator>& prev_oper, BaseTable* table, FilterStmt* fu) {
+  auto process_one_table = [/*, &all_fields*/](unique_ptr<LogicalOperator>& prev_oper, BaseTable* table, FilterStmt* fu, const std::string& alias) {
     std::vector<Field> fields; // TODO(wbj) 现在没用这个
     // for (const Field &field : all_fields) {
     //   if (0 == strcmp(field.table_name(), table->name())) {
@@ -135,7 +135,7 @@ RC LogicalPlanGenerator::create_plan(
     // }
     unique_ptr<LogicalOperator> table_get_oper;
     if (table->is_table()) {
-      unique_ptr<LogicalOperator> table_get(new TableGetLogicalOperator(static_cast<Table*>(table), fields, true/*readonly*/));
+      unique_ptr<LogicalOperator> table_get(new TableGetLogicalOperator(static_cast<Table*>(table), fields, true/*readonly*/, alias));
       table_get_oper = std::move(table_get);
     } else {
       unique_ptr<LogicalOperator> view_get(new ViewGetLogicalOperator(static_cast<View*>(table), fields, true));
@@ -173,9 +173,10 @@ RC LogicalPlanGenerator::create_plan(
     unique_ptr<LogicalOperator> prev_oper(nullptr); // INNER JOIN
     auto& join_tables = jt.join_tables();
     auto& on_conds = jt.on_conds();
+    auto& alias = jt.alias();
     ASSERT(join_tables.size() == on_conds.size(), "ERROR!");
     for (size_t i = 0; i < join_tables.size(); ++i) {
-      if (rc = process_one_table(prev_oper, join_tables[i], on_conds[i]); RC::SUCCESS != rc) {
+      if (rc = process_one_table(prev_oper, join_tables[i], on_conds[i], alias[i]); RC::SUCCESS != rc) {
         return rc;
       }
     }

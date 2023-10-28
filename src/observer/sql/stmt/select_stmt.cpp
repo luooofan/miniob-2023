@@ -51,10 +51,13 @@ static void wildcard_fields(const BaseTable *table, const std::string& alias, st
       FieldExpr *tmp = new FieldExpr(table, field);
       if (is_single_table) {
         tmp->set_name(tmp->get_field_name()); // should same as origin
+        tmp->set_alias(tmp->get_field_name()); // should same as origin
       } else if (alias.empty()) {
         tmp->set_name(tmp->get_table_name() + "." + tmp->get_field_name());
+        tmp->set_alias(tmp->get_table_name() + "." + tmp->get_field_name());
       } else {
-        tmp->set_name(alias + "." + tmp->get_field_name());
+        tmp->set_name(tmp->get_table_name() + "." + tmp->get_field_name());
+        tmp->set_alias(alias + "." + tmp->get_field_name());
       }
       projects.emplace_back(tmp);
     }
@@ -62,6 +65,7 @@ static void wildcard_fields(const BaseTable *table, const std::string& alias, st
 }
 
 RC SelectStmt::process_from_clause(Db *db, std::vector<BaseTable *> &tables,
+    std::vector<std::string> &alias,
     std::unordered_map<std::string, std::string> &table_alias_map,
     std::unordered_map<std::string, BaseTable *> &table_map,
     std::vector<InnerJoinSqlNode> &from_relations,
@@ -72,7 +76,7 @@ RC SelectStmt::process_from_clause(Db *db, std::vector<BaseTable *> &tables,
   // collect tables info in `from` statement
   auto check_and_collect_tables = [&](const std::pair<std::string, std::string>& table_name_pair) {
     const std::string& src_name = table_name_pair.first;
-    const std::string& alias = table_name_pair.second;
+    const std::string& src_alias = table_name_pair.second;
     if (src_name.empty()) {
       LOG_WARN("invalid argument. relation name is null.");
       return RC::INVALID_ARGUMENT;
@@ -85,16 +89,17 @@ RC SelectStmt::process_from_clause(Db *db, std::vector<BaseTable *> &tables,
     }
 
     tables.push_back(table);
+    alias.emplace_back(src_alias);
     table_map.insert(std::pair<std::string, BaseTable *>(src_name, table));
-    if (!alias.empty()) {
+    if (!src_alias.empty()) {
       // 需要考虑别名重复的问题
       // NOTE: 这里不能用 table_map 因为其中有 parent table
-      if (table_alias_set.count(alias) != 0) {
+      if (table_alias_set.count(src_alias) != 0) {
         return RC::INVALID_ARGUMENT;
       }
-      table_alias_set.insert(alias);
-      table_alias_map.insert(std::pair<std::string, std::string>(src_name, alias));
-      table_map.insert(std::pair<std::string, BaseTable *>(alias, table));
+      table_alias_set.insert(src_alias);
+      table_alias_map.insert(std::pair<std::string, std::string>(src_name, src_alias));
+      table_map.insert(std::pair<std::string, BaseTable *>(src_alias, table));
     }
     return RC::SUCCESS;
   };
@@ -112,7 +117,7 @@ RC SelectStmt::process_from_clause(Db *db, std::vector<BaseTable *> &tables,
     if (condition != nullptr) {
       // TODO 这里重新考虑下父子查询
       // TODO select * from t1 where c1 in (select * from t2 inner join t3 on t1.c1 > 0 inner join t1) ?
-      if (rc = FilterStmt::create(db, table_map[relation.first], &table_map, condition, filter_stmt);
+      if (rc = FilterStmt::create(db, table_map[relation.first], &table_map, tables, condition, filter_stmt);
               rc != RC::SUCCESS) {
         return rc;
       }
@@ -120,7 +125,7 @@ RC SelectStmt::process_from_clause(Db *db, std::vector<BaseTable *> &tables,
     }
 
     // fill JoinTables
-    jt.push_join_table(table_map[relation.first], filter_stmt);
+    jt.push_join_table(table_map[relation.first], filter_stmt, relation.second);
     return rc;
   };
 
@@ -171,10 +176,11 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
   // from 中的 table 有两个层级 第一级是笛卡尔积 第二级是 INNER JOIN
   // e.g. (t1 inner join t2 inner join t3, t4) -> (t1, t2, t3), (t4)
   std::vector<BaseTable *> tables; // 收集所有 table 主要用于解析 select *
+  std::vector<std::string> alias; // 收集所有 table 主要用于解析 select *
   std::unordered_map<std::string, std::string> table_alias_map; // <table src name, table alias name>
   std::unordered_map<std::string, BaseTable *> table_map = parent_table_map; // 收集所有 table 包括所有祖先查询的 table
   std::vector<JoinTables> join_tables;
-  RC rc = process_from_clause(db, tables, table_alias_map, table_map, select_sql.relations, join_tables);
+  RC rc = process_from_clause(db, tables, alias, table_alias_map, table_map, select_sql.relations, join_tables);
   if (OB_FAIL(rc)) {
     LOG_WARN("SelectStmt-FromClause: Process Failed! RETURN %d", rc);
     return rc;
@@ -224,13 +230,16 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
         if (tables.empty() || !field_expr->alias().empty()) {
           return RC::INVALID_ARGUMENT; // not allow: select *; select * as xxx;
         }
-        for (const BaseTable *table : tables) {
-          if (table_alias_map.count(table->name())) {
-            wildcard_fields(table, table_alias_map[table->name()], projects, is_single_table);
-          } else {
-            wildcard_fields(table, std::string(), projects, is_single_table);
-          }
+        for (size_t i = 0; i < tables.size(); ++i) {
+          wildcard_fields(tables[i], alias[i], projects, is_single_table);
         }
+        // for (const BaseTable *table : tables) {
+        //   if (table_alias_map.count(table->name())) {
+        //     wildcard_fields(table, table_alias_map[table->name()], projects, is_single_table);
+        //   } else {
+        //     wildcard_fields(table, std::string(), projects, is_single_table);
+        //   }
+        // }
       } else if(0 == strcmp(field_name, "*")) { // t1.*
         ASSERT(0 != strcmp(table_name, "*"), "Parse ERROR!");
         auto iter = table_map.find(table_name);
@@ -268,6 +277,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
     rc = FilterStmt::create(db,
         default_table,
         &table_map,
+        tables,
         select_sql.conditions,
         filter_stmt);
     if (rc != RC::SUCCESS) {
@@ -318,6 +328,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
       rc = FilterStmt::create(db,
           default_table,
           &table_map,
+          tables,
           select_sql.having_conditions,
           having_filter_stmt);
       if (rc != RC::SUCCESS) {
