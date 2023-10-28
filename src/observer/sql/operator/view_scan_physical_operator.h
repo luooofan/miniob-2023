@@ -50,6 +50,5 @@ private:
   char *                                   record_data_ = nullptr;
   int                                      record_size_;
   Record                                   view_record_;
-  std::vector<TupleCellSpec>               cols_spec_;  // 用来从Tuple中寻找所需的value cell
   std::unique_ptr<PhysicalOperator>        physical_oper_;
 };

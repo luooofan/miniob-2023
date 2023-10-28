@@ -45,10 +45,6 @@ RC ViewScanPhysicalOperator::open(Trx *trx)
     return rc;
   }
 
-  for (const Field &col_field : view_->get_map_fields()) {
-    cols_spec_.emplace_back(col_field.table_name(), col_field.field_name());
-  }
-
   tuple_.set_schema(view_);
   record_size_ = view_->table_meta().record_size();
   record_data_ = (char*)malloc(record_size_);
@@ -78,11 +74,11 @@ RC ViewScanPhysicalOperator::next()
     // 需要将不知道是什么类型的Tuple，处理成RowTuple，这里需要重新构造Record，但是需要保留RID
     memset(record_data_, 0, record_size_);
     common::Bitmap record_bitmap(record_data_ + null_offset, field_num);
-    for (size_t col_idx = 0; col_idx < cols_spec_.size(); col_idx++) {
+    for (size_t col_idx = 0; col_idx < tuple->cell_num(); col_idx++) {
       Value view_col_val;
       const FieldMeta *table_field_meta = view_->table_meta().field(col_idx + sys_field_num);
-      int tmp_idx = 0;
-      tuple->find_cell(cols_spec_[col_idx], view_col_val, tmp_idx);
+      // TODO: TEXT类型期望只拿到位置信息，不拿原始字符串
+      tuple->cell_at(col_idx, view_col_val);
       if (view_col_val.is_null()) {
         record_bitmap.set_bit(col_idx + sys_field_num);
       } else {

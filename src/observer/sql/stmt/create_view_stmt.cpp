@@ -29,6 +29,8 @@ RC CreateViewStmt::create(Db *db, const CreateViewSqlNode &create_view, Stmt *&s
   }
 
   Stmt *sub_stmt = nullptr;
+  SelectSqlNode sql_back;
+  sql_back.deep_copy(select_sql);
   rc = SelectStmt::create(db, select_sql, sub_stmt);
   if (RC::SUCCESS != rc) {
     LOG_WARN("failed to create select_stmt when create_table_select, rc=%s", strrc(rc));
@@ -91,7 +93,7 @@ RC CreateViewStmt::create(Db *db, const CreateViewSqlNode &create_view, Stmt *&s
   }
 
   stmt = new CreateViewStmt(allow_write, std::move(create_view.view_name), 
-                            std::move(attr_infos), std::move(map_fields), &select_sql);
+                            std::move(attr_infos), std::move(map_fields), &sql_back);
   
   sql_debug("create table statement: table name %s", create_view.view_name.c_str());
   delete sub_stmt;

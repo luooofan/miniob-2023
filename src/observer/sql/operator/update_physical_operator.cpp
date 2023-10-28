@@ -461,7 +461,7 @@ RC UpdatePhysicalOperator::construct_old_record(Table *table, Record &updated_re
   size_t val_idx = 0;
   for (size_t i = 0; i < field_val_map.size(); i++) {
     Value *value = &old_value[val_idx++];
-    FieldMeta &field_meta = fields_meta_[field_val_map[i].first];
+    FieldMeta &field_meta = fields_meta_[field_val_map[i].second];
 
     // 将旧值复制到 old_record 里
     const FieldMeta* null_field = table->table_meta().null_field();
