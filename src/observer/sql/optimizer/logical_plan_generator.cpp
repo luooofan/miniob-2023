@@ -399,10 +399,15 @@ RC LogicalPlanGenerator::create_plan(
     const FieldMeta *field_meta = table->table_meta().field(i);
     fields.push_back(Field(table, field_meta));
   }
-  if (table->is_view()) {
-    return RC::INTERNAL;
+
+  unique_ptr<LogicalOperator> table_get_oper;
+  if (table->is_table()) {
+    unique_ptr<LogicalOperator> table_get(new TableGetLogicalOperator(static_cast<Table*>(table), fields, false/*readonly*/));
+    table_get_oper = std::move(table_get);
+  } else {
+    unique_ptr<LogicalOperator> view_get(new ViewGetLogicalOperator(static_cast<View*>(table), fields, false/*readonly*/));
+    table_get_oper = std::move(view_get);
   }
-  unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(static_cast<Table*>(table), fields, false/*readonly*/));
 
   unique_ptr<LogicalOperator> predicate_oper;
   RC rc = create_plan(filter_stmt, predicate_oper);

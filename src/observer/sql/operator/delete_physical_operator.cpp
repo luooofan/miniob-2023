@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/delete_physical_operator.h"
 #include "storage/record/record.h"
 #include "storage/table/table.h"
+#include "storage/table/view.h"
 #include "storage/trx/trx.h"
 #include "sql/stmt/delete_stmt.h"
 
@@ -44,6 +45,20 @@ RC DeletePhysicalOperator::next()
     return RC::RECORD_EOF;
   }
 
+  if (table_->is_table()) {
+    rc = delete_from_table();
+  } else {
+    rc = delete_from_view();
+  }
+
+  return rc;
+}
+
+RC DeletePhysicalOperator::delete_from_table()
+{
+  RC rc = RC::SUCCESS;
+
+  Table *table = static_cast<Table*>(table_);
   PhysicalOperator *child = children_[0].get();
   while (RC::SUCCESS == (rc = child->next())) {
     Tuple *tuple = child->current_tuple();
@@ -54,7 +69,7 @@ RC DeletePhysicalOperator::next()
 
     RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
     Record &record = row_tuple->record();
-    rc = trx_->delete_record(table_, record);
+    rc = trx_->delete_record(table, record);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to delete record: %s", strrc(rc));
       return rc;
@@ -62,6 +77,44 @@ RC DeletePhysicalOperator::next()
   }
 
   return RC::RECORD_EOF;
+}
+
+RC DeletePhysicalOperator::delete_from_view()
+{
+  RC rc = RC::SUCCESS;
+
+  PhysicalOperator *child = children_[0].get();
+  while (RC::SUCCESS == (rc = child->next())) {
+    Tuple *tuple = child->current_tuple();
+    if (nullptr == tuple) {
+      LOG_WARN("failed to get current record: %s", strrc(rc));
+      return rc;
+    }
+
+    RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
+    std::unordered_map<const BaseTable*, RID> table_rid = row_tuple->get_table_rid_map();
+    for (auto iter : table_rid) {
+      Record record;
+      if (!iter.first->is_table()) {
+        LOG_ERROR("unexpect map_relation from view to view");
+        return RC::INTERNAL;
+      }
+
+      Table *table = const_cast<Table*>(static_cast<const Table*>(iter.first));
+      rc = table->get_record(iter.second, record);
+      if (RC::SUCCESS != rc) {
+        LOG_WARN("failed to get record from table:%s, rid:%ld-%ld", table->name(), iter.second.page_num, iter.second.slot_num);
+        return rc;
+      }
+
+      rc = trx_->delete_record(table, record);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to delete record: %s", strrc(rc));
+        return rc;
+      }
+    } // end delete one record from tables
+  }
+  return rc;
 }
 
 RC DeletePhysicalOperator::close()
