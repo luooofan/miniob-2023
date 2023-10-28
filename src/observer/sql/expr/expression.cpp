@@ -910,5 +910,14 @@ AttrType SubQueryExpr::value_type() const
 
 std::unique_ptr<Expression> SubQueryExpr::deep_copy() const 
 { 
-  return {}; 
+  SelectSqlNode new_select_sql;
+  new_select_sql.deep_copy(*sql_node_);
+  auto new_expr = std::make_unique<SubQueryExpr>(new_select_sql);
+  new_expr->set_name(name());
+  new_expr->set_alias(alias());
+  // TODO 这里不考虑其他
+  if (stmt_ || logical_oper_ || physical_oper_) {
+    LOG_ERROR("ERROR! in subquery expr deep copy");
+  }
+  return new_expr;
 }
