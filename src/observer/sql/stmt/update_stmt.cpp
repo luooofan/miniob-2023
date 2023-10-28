@@ -17,7 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 #include "sql/stmt/select_stmt.h"
-UpdateStmt::UpdateStmt(Table *table, std::vector<FieldMeta> fields, std::vector<std::unique_ptr<Expression>>&& values, FilterStmt *filter_stmt)
+UpdateStmt::UpdateStmt(BaseTable *table, std::vector<FieldMeta> fields, std::vector<std::unique_ptr<Expression>>&& values, FilterStmt *filter_stmt)
   : table_(table), fields_(std::move(fields)), values_(std::move(values)), filter_stmt_(filter_stmt)
 {
 }
@@ -42,7 +42,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
     return RC::INVALID_ARGUMENT;
   }
   // check whether the table exists
-  Table *table = db->find_table(table_name);
+  BaseTable *table = db->find_base_table(table_name);
   if (nullptr == table) {
     LOG_WARN("no such table. db=%s, table_name=%s", db->name(), table_name);
     return RC::SCHEMA_TABLE_NOT_EXIST;
@@ -115,8 +115,8 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
   }
   update.values.clear();
 
-  std::unordered_map<std::string, Table *> table_map;
-  table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
+  std::unordered_map<std::string, BaseTable *> table_map;
+  table_map.insert(std::pair<std::string, BaseTable *>(std::string(table_name), table));
   FilterStmt *filter_stmt = nullptr;
   RC rc = FilterStmt::create(
       db, table, &table_map, update.conditions, filter_stmt);

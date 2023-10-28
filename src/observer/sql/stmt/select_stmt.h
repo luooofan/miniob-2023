@@ -47,18 +47,18 @@ public:
       join_tables_.swap(other.join_tables_);
       on_conds_.swap(other.on_conds_);
     }
-    void push_join_table(Table* table, FilterStmt* fu) {
+    void push_join_table(BaseTable* table, FilterStmt* fu) {
       join_tables_.emplace_back(table);
       on_conds_.emplace_back(fu);
     }
-    const std::vector<Table*>& join_tables() const {
+    const std::vector<BaseTable*>& join_tables() const {
       return join_tables_;
     }
     const std::vector<FilterStmt*>& on_conds() const {
       return on_conds_;
     }
   private:
-    std::vector<Table*> join_tables_;
+    std::vector<BaseTable*> join_tables_;
     std::vector<FilterStmt*> on_conds_;
   };
 public:
@@ -73,7 +73,7 @@ public:
 public:
   // select_sql.project exprs would be clear
   static RC create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt,
-    const std::unordered_map<std::string, Table *> &parent_table_map = {});
+    const std::unordered_map<std::string, BaseTable *> &parent_table_map = {});
 
 public:
   const std::vector<JoinTables> &join_tables() const
@@ -101,9 +101,9 @@ public:
     return projects_;
   }
 private:
-  static RC process_from_clause(Db *db, std::vector<Table *> &tables,
+  static RC process_from_clause(Db *db, std::vector<BaseTable *> &tables,
     std::unordered_map<std::string, std::string> &table_alias_map,
-    std::unordered_map<std::string, Table *> &table_map,
+    std::unordered_map<std::string, BaseTable *> &table_map,
     std::vector<InnerJoinSqlNode> &from_relations,
     std::vector<JoinTables> &join_tables);
 private:

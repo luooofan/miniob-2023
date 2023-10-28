@@ -142,7 +142,7 @@ class FieldExpr : public Expression
 public:
   FieldExpr() = default;
   FieldExpr(const std::string& table_name, const std::string& field_name) : table_name_(table_name), field_name_(field_name) {}
-  FieldExpr(const Table *table, const FieldMeta *field) : field_(table, field), table_name_(table->name()), field_name_(field->name()) {}
+  FieldExpr(const BaseTable *table, const FieldMeta *field) : field_(table, field), table_name_(table->name()), field_name_(field->name()) {}
   FieldExpr(const Field &field) : field_(field), table_name_(field.table_name()), field_name_(field.field_name()) {}
 
   virtual ~FieldExpr() = default;
@@ -165,8 +165,8 @@ public:
 
   FieldMeta get_field_meta() const { return *field_.meta(); }
 
-  RC check_field(const std::unordered_map<std::string, Table *> &table_map,
-    const std::vector<Table *> &tables, Table* default_table = nullptr,
+  RC check_field(const std::unordered_map<std::string, BaseTable *> &table_map,
+    const std::vector<BaseTable *> &tables, BaseTable* default_table = nullptr,
     const std::unordered_map<std::string, std::string> & table_alias_map = {});
 
   std::unique_ptr<Expression> deep_copy() const override
@@ -764,7 +764,7 @@ public:
 
   std::unique_ptr<Expression> deep_copy() const;
 
-  RC generate_select_stmt(Db* db, const std::unordered_map<std::string, Table *> &tables);
+  RC generate_select_stmt(Db* db, const std::unordered_map<std::string, BaseTable *> &tables);
   RC generate_logical_oper();
   RC generate_physical_oper();
 

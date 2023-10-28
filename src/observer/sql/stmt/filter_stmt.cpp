@@ -21,7 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
-RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
+RC FilterStmt::create(Db *db, BaseTable *default_table, std::unordered_map<std::string, BaseTable *> *tables,
     Expression *condition, FilterStmt *&stmt)
 {
   RC rc = RC::SUCCESS;

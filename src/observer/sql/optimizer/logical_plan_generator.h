@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "common/rc.h"
 
+class View;
 class Stmt;
 class CalcStmt;
 class CreateTableStmt;

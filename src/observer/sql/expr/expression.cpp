@@ -485,14 +485,14 @@ RC ArithmeticExpr::try_get_value(Value &value) const
 // table_map 有表名检查表名(可能是别名) 没表名只能有一个 table 或者用 default table 检查列名
 // table_alias_map 是为了设置 name alias 的时候用
 // NOTE: 是针对 projects 中的 FieldExpr 写的 conditions 中的也可以用 但是处理之后的 name alias 是无用的
-RC FieldExpr::check_field(const std::unordered_map<std::string, Table *> &table_map,
-  const std::vector<Table *> &tables, Table* default_table,
+RC FieldExpr::check_field(const std::unordered_map<std::string, BaseTable *> &table_map,
+  const std::vector<BaseTable *> &tables, BaseTable* default_table,
   const std::unordered_map<std::string, std::string> & table_alias_map)
 {
   ASSERT(field_name_ != "*", "ERROR!");
   const char* table_name = table_name_.c_str();
   const char* field_name = field_name_.c_str();
-  Table * table = nullptr;
+  BaseTable * table = nullptr;
   if(!common::is_blank(table_name)) { //表名不为空
     // check table
     auto iter = table_map.find(table_name);
@@ -833,7 +833,7 @@ SubQueryExpr::SubQueryExpr(const SelectSqlNode& sql_node)
   
 SubQueryExpr::~SubQueryExpr() = default;
 
-RC SubQueryExpr::generate_select_stmt(Db* db, const std::unordered_map<std::string, Table *> &tables)
+RC SubQueryExpr::generate_select_stmt(Db* db, const std::unordered_map<std::string, BaseTable *> &tables)
 {
   Stmt * select_stmt = nullptr;
   if (RC rc = SelectStmt::create(db, *sql_node_.get(), select_stmt, tables); OB_FAIL(rc)) {

@@ -69,7 +69,7 @@ public:
     return exprs_;
   }
 public:
-  static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
+  static RC create(Db *db, BaseTable *default_table, std::unordered_map<std::string, BaseTable *> *tables,
       const std::vector<OrderBySqlNode> &orderby_sql_nodes, OrderByStmt *&stmt,
       std::vector<std::unique_ptr<Expression>> &&exprs);
 

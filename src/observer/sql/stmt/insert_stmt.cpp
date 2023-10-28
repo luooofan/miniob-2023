@@ -17,7 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
-InsertStmt::InsertStmt(Table *table, std::vector<std::vector<Value>> &values, int value_amount)
+InsertStmt::InsertStmt(BaseTable *table, std::vector<std::vector<Value>> &values, int value_amount)
     : table_(table), values_(values), value_amount_(value_amount)
 {}
 
@@ -32,7 +32,7 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
   }
 
   // check whether the table exists
-  Table *table = db->find_table(table_name);
+  BaseTable *table = db->find_base_table(table_name);
   if (nullptr == table) {
     LOG_WARN("no such table. db=%s, table_name=%s", db->name(), table_name);
     return RC::SCHEMA_TABLE_NOT_EXIST;
@@ -55,7 +55,7 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
   return RC::SUCCESS;
 }
 
-RC InsertStmt::check_full_rows(Table *table, const InsertSqlNode &inserts, std::vector<std::vector<Value>> &rows)
+RC InsertStmt::check_full_rows(BaseTable *table, const InsertSqlNode &inserts, std::vector<std::vector<Value>> &rows)
 {
   RC rc = RC::SUCCESS;
 
@@ -112,7 +112,7 @@ RC InsertStmt::check_full_rows(Table *table, const InsertSqlNode &inserts, std::
   return rc;
 }
 
-RC InsertStmt::check_incomplete_rows(Table *table, const InsertSqlNode &inserts, std::vector<std::vector<Value>> &rows)
+RC InsertStmt::check_incomplete_rows(BaseTable *table, const InsertSqlNode &inserts, std::vector<std::vector<Value>> &rows)
 {
   RC rc = RC::SUCCESS;
 

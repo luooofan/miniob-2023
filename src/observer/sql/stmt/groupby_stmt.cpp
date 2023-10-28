@@ -6,7 +6,7 @@
 #include "storage/table/table.h"
 #include "sql/stmt/filter_stmt.h"
 
-RC GroupByStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
+RC GroupByStmt::create(Db *db, BaseTable *default_table, std::unordered_map<std::string, BaseTable *> *tables,
     const std::vector<Expression*>& groupby_expr, GroupByStmt *&stmt,
     std::vector<std::unique_ptr<AggrFuncExpr>> &&agg_exprs,
     std::vector<std::unique_ptr<FieldExpr>> &&field_exprs)

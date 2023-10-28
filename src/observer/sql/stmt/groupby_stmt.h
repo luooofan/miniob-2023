@@ -45,7 +45,7 @@ public:
     groupby_fields_ = std::move(groupby_fields);
   }
 public:
-  static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
+  static RC create(Db *db, BaseTable *default_table, std::unordered_map<std::string, BaseTable *> *tables,
       const std::vector<Expression*>& groupby_expr, GroupByStmt *&stmt,
       std::vector<std::unique_ptr<AggrFuncExpr>>&& agg_exprs,
       std::vector<std::unique_ptr<FieldExpr>>&& field_exprs);

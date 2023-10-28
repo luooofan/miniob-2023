@@ -14,8 +14,10 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include "storage/table/view.h"
 #include "storage/table/table.h"
 #include "storage/field/field_meta.h"
+#include "storage/table/base_table.h"
 
 /**
  * @brief 字段
@@ -25,11 +27,11 @@ class Field
 {
 public:
   Field() = default;
-  Field(const Table *table, const FieldMeta *field) : table_(table), field_(field)
+  Field(const BaseTable *table, const FieldMeta *field) : table_(table), field_(field)
   {}
   Field(const Field &) = default;
 
-  const Table *table() const
+  const BaseTable *table() const
   {
     return table_;
   }
@@ -67,6 +69,6 @@ public:
   const char *get_data(const Record &record);
 
 private:
-  const Table *table_ = nullptr;
+  const BaseTable *table_ = nullptr;
   const FieldMeta *field_ = nullptr;
 };

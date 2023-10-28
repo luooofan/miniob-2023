@@ -22,6 +22,7 @@ See the Mulan PSL v2 for more details. */
 
 class Db;
 class Table;
+class BaseTable;
 class FieldMeta;
 
 /**
@@ -41,7 +42,7 @@ public:
   }
 
 public:
-  static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
+  static RC create(Db *db, BaseTable *default_table, std::unordered_map<std::string, BaseTable *> *tables,
       Expression *condition, FilterStmt *&stmt);
 
 private:

@@ -21,7 +21,10 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include "common/os/path.h"
 #include "common/lang/string.h"
+#include "storage/field/field.h"
 #include "storage/table/table_meta.h"
+#include "storage/table/base_table.h"
+#include "storage/table/view.h"
 #include "storage/table/table.h"
 #include "storage/common/meta_util.h"
 #include "storage/trx/trx.h"
@@ -96,14 +99,49 @@ RC Db::create_table(const char *table_name, int attribute_count, const AttrInfoS
     return rc;
   }
 
-  opened_tables_[table_name] = table;
+  opened_tables_[table_name] = static_cast<BaseTable*>(table);
   LOG_INFO("Create table success. table name=%s, table_id:%d", table_name, table_id);
   return RC::SUCCESS;
 }
 
+RC Db::create_view(const char *view_name, bool allow_write, const std::vector<AttrInfoSqlNode> attr_infos, 
+                  const std::vector<Field> &map_fields, SelectSqlNode *select_sql)
+{
+  RC rc = RC::SUCCESS;
+  // check table_name
+  if (opened_tables_.count(view_name) != 0) {
+    LOG_WARN("%s has been opened before.", view_name);
+    return RC::SCHEMA_TABLE_EXIST;
+  }
+
+  View *view = new View();
+  int32_t table_id = next_table_id_++;
+  std::string view_file_path = view_meta_file(path_.c_str(), view_name);
+  rc = view->create(table_id, allow_write, view_file_path.c_str(), view_name, path_.c_str(), attr_infos, map_fields, select_sql);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to create table %s.", view_name);
+    delete view;
+    return rc;
+  }
+  view->set_db(this);
+
+  opened_tables_[view_name] = static_cast<BaseTable*>(view);
+  LOG_INFO("Create table success. table name=%s, table_id:%d", view_name, table_id);
+  return rc;
+}
+
 Table *Db::find_table(const char *table_name) const
 {
-  std::unordered_map<std::string, Table *>::const_iterator iter = opened_tables_.find(table_name);
+  std::unordered_map<std::string, BaseTable *>::const_iterator iter = opened_tables_.find(table_name);
+  if (iter != opened_tables_.end() && iter->second->is_table()) {
+    return static_cast<Table*>(iter->second);
+  }
+  return nullptr;
+}
+
+BaseTable *Db::find_base_table(const char *table_name) const
+{
+  std::unordered_map<std::string, BaseTable *>::const_iterator iter = opened_tables_.find(table_name);
   if (iter != opened_tables_.end()) {
     return iter->second;
   }
@@ -113,8 +151,8 @@ Table *Db::find_table(const char *table_name) const
 Table *Db::find_table(int32_t table_id) const
 {
   for (auto pair : opened_tables_) {
-    if (pair.second->table_id() == table_id) {
-      return pair.second;
+    if (pair.second->table_id() == table_id && pair.second->is_table()) {
+      return static_cast<Table*>(pair.second);
     }
   }
   return nullptr;
@@ -173,7 +211,10 @@ RC Db::sync()
 {
   RC rc = RC::SUCCESS;
   for (const auto &table_pair : opened_tables_) {
-    Table *table = table_pair.second;
+    if (table_pair.second->is_view()) {
+      continue;
+    }
+    Table *table = static_cast<Table*>(table_pair.second);
     rc = table->sync();
     if (rc != RC::SUCCESS) {
       LOG_ERROR("Failed to flush table. table=%s.%s, rc=%d:%s", name_.c_str(), table->name(), rc, strrc(rc));
@@ -205,7 +246,7 @@ RC Db::drop_table(const char *table_name)
       LOG_WARN("table : %s not exist", table_name);
       rc = RC::SCHEMA_TABLE_NOT_EXIST;
     }
-    else if( (table = it->second) == nullptr)
+    else if(it->second->is_table() && (table = static_cast<Table*>(it->second)) == nullptr)
     {
       LOG_WARN("table : %s not exist", table_name);
       rc = RC::SCHEMA_TABLE_NOT_EXIST;

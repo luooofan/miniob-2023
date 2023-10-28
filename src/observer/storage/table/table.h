@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include <functional>
+#include "storage/table/base_table.h"
 #include "storage/table/table_meta.h"
 
 struct RID;
@@ -33,7 +34,7 @@ class Trx;
  * @brief 表
  * 
  */
-class Table 
+class Table : public BaseTable
 {
 public:
   Table() = default;
@@ -48,9 +49,9 @@ public:
    * @param attributes 字段
    */
   RC create(int32_t table_id, 
-            const char *path, 
-            const char *name, 
-            const char *base_dir, 
+            const char *path,     // .table
+            const char *name,     // table_name
+            const char *base_dir, // db/sys/
             int attribute_count, 
             const AttrInfoSqlNode attributes[]);
 
@@ -102,10 +103,10 @@ public:
   RC read_text(int64_t offset, int64_t length, char *data) const;
 
 public:
-  int32_t table_id() const { return table_meta_.table_id(); }
-  const char *name() const;
-
-  const TableMeta &table_meta() const;
+  virtual int32_t table_id() const { return table_meta_.table_id(); }
+  virtual const char *name() const;
+  virtual const TableMeta &table_meta() const;
+  
   const std::vector<Index *> &indexes() const
   {
     return indexes_;
@@ -117,8 +118,6 @@ public:
 private:
   RC insert_entry_of_indexes(const char *record, const RID &rid);
   RC delete_entry_of_indexes(const char *record, const RID &rid, bool error_on_not_exists);
-
-
 
 private:
   RC init_record_handler(const char *base_dir);

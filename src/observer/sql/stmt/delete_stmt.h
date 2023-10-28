@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse_defs.h"
 
 class Table;
+class BaseTable;
 class FilterStmt;
 
 /**
@@ -27,10 +28,10 @@ class FilterStmt;
 class DeleteStmt : public Stmt 
 {
 public:
-  DeleteStmt(Table *table, FilterStmt *filter_stmt);
+  DeleteStmt(BaseTable *table, FilterStmt *filter_stmt);
   ~DeleteStmt() override;
 
-  Table *table() const
+  BaseTable *table() const
   {
     return table_;
   }
@@ -48,6 +49,6 @@ public:
   static RC create(Db *db, const DeleteSqlNode &delete_sql, Stmt *&stmt);
 
 private:
-  Table *table_ = nullptr;
+  BaseTable *table_ = nullptr;
   FilterStmt *filter_stmt_ = nullptr;
 };
