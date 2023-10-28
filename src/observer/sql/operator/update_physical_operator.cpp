@@ -115,7 +115,7 @@ RC UpdatePhysicalOperator::find_target_columns()
 
       if (!invalid_) {
         raw_values_.emplace_back(raw_value);
-        fields_meta_.emplace_back(*field_meta);
+        // fields_meta_.emplace_back(*field_meta);
         field_value_map.emplace_back(i + sys_field_num, c_idx);
       }
       break;
@@ -140,11 +140,13 @@ RC UpdatePhysicalOperator::find_target_view_columns()
 
   for (size_t i = 0; i < values_.size(); i++) {
     EmptyTuple tmp_tuple;
-    rc = values_[i]->get_value(tmp_tuple, raw_values_[i]);
+    Value col_value;
+    rc = values_[i]->get_value(tmp_tuple, col_value);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to get value from expr, rc=%s", strrc(rc));
       return rc;
     }
+    raw_values_.emplace_back(col_value);
   }
 
   /*   
@@ -179,7 +181,7 @@ RC UpdatePhysicalOperator::find_target_view_columns()
       size_t field_idx = table->table_meta().find_field_idx_by_name(attr_name.c_str());
       auto val_iter = tables_field_value_.find(table);
       if (tables_field_value_.end() == val_iter) {
-        tables_field_value_.emplace(table, std::vector<std::pair<size_t, size_t>>{(field_idx, c_idx)});
+        tables_field_value_.emplace(table, std::vector<std::pair<size_t, size_t>>{{field_idx, c_idx}});
       } else {
         val_iter->second.emplace_back(field_idx, c_idx);
       }
@@ -308,7 +310,7 @@ RC UpdatePhysicalOperator::update_view()
       Record new_record;
       // 如果更新前后record不变，则跳过这一行
       RC rc2 = RC::SUCCESS;
-      if (RC::SUCCESS != (rc2 = construct_new_record(table, new_record, new_record))) {
+      if (RC::SUCCESS != (rc2 = construct_new_record(table, old_record, new_record))) {
         if (RC::RECORD_DUPLICATE_KEY == rc2) { 
           continue;
         } else { 
@@ -342,7 +344,8 @@ RC UpdatePhysicalOperator::construct_new_record(Table *table, Record &old_record
     size_t val_idx = field_value_map[i].second;
 
     Value *value = &raw_values_[val_idx];
-    FieldMeta &field_meta = fields_meta_[val_idx];
+    const FieldMeta &field_meta = (*table->table_meta().field_metas())[field_idx];
+    // FieldMeta &field_meta = fields_meta_[val_idx];
 
     // 判断 新值与旧值是否相等，缓存旧值，将新值复制到新的record里
     const FieldMeta* null_field = table->table_meta().null_field();
@@ -461,7 +464,8 @@ RC UpdatePhysicalOperator::construct_old_record(Table *table, Record &updated_re
   size_t val_idx = 0;
   for (size_t i = 0; i < field_val_map.size(); i++) {
     Value *value = &old_value[val_idx++];
-    FieldMeta &field_meta = fields_meta_[field_val_map[i].second];
+    const FieldMeta &field_meta = (*table->table_meta().field_metas())[field_val_map[i].first];
+    // FieldMeta &field_meta = fields_meta_[field_val_map[i].second]; 
 
     // 将旧值复制到 old_record 里
     const FieldMeta* null_field = table->table_meta().null_field();

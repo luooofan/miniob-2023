@@ -12,6 +12,9 @@ insert into create_view_v1 values(179, 179, 'YU5DQ1');
 insert into create_view_v1 values(77, 77, '7QX1');
 insert into create_view_v1 values(120, 120, 'T3DNVGXJ');
 insert into create_view_v1 values(70, 70, '5QEOU03D');
+
+update create_view_v1 set age=250 where id=78;
+
 insert into create_view_v2 values(67, 67);
 insert into create_view_v4 values(99, 100, 'TABLE2');
 

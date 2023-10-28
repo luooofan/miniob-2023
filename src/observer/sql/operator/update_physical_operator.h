@@ -79,7 +79,7 @@ private:
   std::vector<std::unique_ptr<Expression>> values_;
   std::vector<Value> raw_values_;
   std::vector<std::string> fields_;
-  std::vector<FieldMeta> fields_meta_;  // 与values相对应的FieldMeta
+  // std::vector<FieldMeta> fields_meta_;  // 与values相对应的FieldMeta
   char *tmp_record_data_ = nullptr;     // 用于存放新的Record的data
 
   // 按表分类，存储已经更新过的行数据，用于回滚
