@@ -92,7 +92,8 @@ install_linux() {
       pkg-config \
       zlib1g-dev \
       libelf-dev \
-      libdwarf-dev
+      libdwarf-dev \
+      libreadline-dev
       # clang \
   # Install pyyaml for run_clang_tidy.py with -export-fixes 
   # pip3 install pyyaml
