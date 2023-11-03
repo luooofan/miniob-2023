@@ -25,6 +25,7 @@ See the Mulan PSL v2 for more details. */
 #include <unordered_map>
 #include <functional>
 
+#include "common/lang/lruk_cache.h"
 #include "common/rc.h"
 #include "common/types.h"
 #include "common/lang/mutex.h"
@@ -153,10 +154,14 @@ private:
   };
 
   using FrameLruCache = common::LruCache<FrameId, Frame *, BPFrameIdHasher>;
+
+
+  using FrameLruKCache = common::LruKCache<2, FrameId, Frame *, BPFrameIdHasher>;
   using FrameAllocator = common::MemPoolSimple<Frame>;
 
   std::mutex lock_;
-  FrameLruCache  frames_;
+  // FrameLruCache  frames_;
+  FrameLruKCache frames_;
   FrameAllocator allocator_;
 };
 
