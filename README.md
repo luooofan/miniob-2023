@@ -1,3 +1,8 @@
+初赛总结：[Summary · Issue #46 · luooofan/miniob-2023](https://github.com/luooofan/miniob-2023/issues/46)
+
+![image](https://github.com/luooofan/miniob-2023/assets/46896167/2ed52211-3a4c-48ea-bb2a-80605cf845eb)
+
+
 # MiniOB 概述
 
 MiniOB 是 [OceanBase](https://github.com/oceanbase/oceanbase) 团队基于华中科技大学数据库课程原型，联合多所高校重新开发的、专为零基础的同学设计的数据库入门学习项目。我们的目标是为在校学生、数据库从业者、爱好者或对基础技术感兴趣的人提供一个友好的数据库学习项目。
