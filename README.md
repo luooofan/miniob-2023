@@ -1,6 +1,6 @@
 初赛总结：[Summary · Issue #46 · luooofan/miniob-2023](https://github.com/luooofan/miniob-2023/issues/46)
 
-![image](https://github.com/luooofan/miniob-2023/assets/46896167/2ed52211-3a4c-48ea-bb2a-80605cf845eb)
+![image](https://github.com/luooofan/miniob-2023/assets/46896167/cf9524e1-d083-4533-acbf-33409cd1f68c)
 
 
 # MiniOB 概述
